@@ -1,0 +1,79 @@
+name: Publish agent image
+
+on:
+  push:
+    branches: [main, master, publish-agent]
+    paths:
+      - 'apps/agent/**'
+      - 'packages/protocol/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/publish-agent.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ppanel-agent
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=0.1.0
+            type=raw,value=latest
+            type=sha,prefix=
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/agent/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Public pull from game hosts without docker login.
+          provenance: false
+
+      - name: Make package public
+        # GHCR packages are private by default; bootstrap hosts need anonymous pull.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OWNER='${{ github.repository_owner }}'
+          PKG='${{ env.IMAGE_NAME }}'
+          # Lowercase owner for GHCR package API.
+          OWNER_LC="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          gh api \
+            --method PUT \
+            -H "Accept: application/vnd.github+json" \
+            "/user/packages/container/${PKG}/visibility" \
+            -f visibility=public \
+            || gh api \
+              --method PUT \
+              -H "Accept: application/vnd.github+json" \
+              "/orgs/${OWNER}/packages/container/${PKG}/visibility" \
+              -f visibility=public \
+            || echo "Could not set visibility automatically — open https://github.com/users/${OWNER}/packages/container/${PKG}/settings and set Public."
+          echo "Pull with: docker pull ghcr.io/${OWNER_LC}/${PKG}:0.1.0"

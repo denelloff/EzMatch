@@ -1,0 +1,381 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  displayName  String
+  passwordHash String    @db.Text
+  role         UserRole  @default(VIEWER)
+  disabledAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions  Session[]
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  expiresAt DateTime
+  userAgent String?  @db.Text
+  ip        String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+enum AgentStatus {
+  PENDING
+  ONLINE
+  OFFLINE
+  ERROR
+}
+
+model Server {
+  id          String      @id @default(cuid())
+  name        String
+  /// SSH address used once during bootstrap; kept for display only.
+  host        String
+  sshPort     Int         @default(22)
+  publicIp    String?
+  region      String?
+  status      AgentStatus @default(PENDING)
+  agentVersion String?
+  lastSeenAt  DateTime?
+  /// Last reported HostInfo snapshot (os, disks, docker version, ...).
+  hostInfo    Json?
+  lastError   String?     @db.Text
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  agentToken AgentToken?
+  instances  GameInstance[]
+  tasks      Task[]
+
+  @@map("servers")
+}
+
+/// The plaintext token exists only on the agent. The panel stores a hash, so a
+/// database leak does not hand over control of the game hosts.
+model AgentToken {
+  id          String    @id @default(cuid())
+  serverId    String    @unique
+  tokenHash   String    @unique
+  tokenPrefix String
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@map("agent_tokens")
+}
+
+enum InstanceState {
+  CREATING
+  INSTALLING
+  STOPPED
+  STARTING
+  RUNNING
+  STOPPING
+  UPDATING
+  ERROR
+  REMOVED
+}
+
+model GameInstance {
+  id            String        @id @default(cuid())
+  serverId      String
+  name          String
+  containerName String
+  volumeName    String
+  gamePort      Int
+  tvPort        Int
+  state         InstanceState @default(CREATING)
+  containerId   String?
+  /// Steam buildid from appmanifest_730.acf. Changes reveal a CS2 update.
+  buildId       String?
+  /// Build id recorded when plugins were last verified as working.
+  pluginsOkBuildId String?
+  autoRestart   Boolean       @default(true)
+
+  // Secrets, encrypted at the application layer (never plaintext at rest).
+  gsltTokenEnc    String @db.Text
+  rconPasswordEnc String @db.Text
+  joinPasswordEnc String @db.Text
+
+  serverTitle String
+  maxPlayers  Int     @default(10)
+  gameType    Int     @default(0)
+  gameMode    Int     @default(1)
+  startMap    String  @default("de_dust2")
+  lan         Boolean @default(false)
+  hibernate   Boolean @default(false)
+  extraArgs   String  @default("") @db.Text
+
+  logDetail Int     @default(3)
+  logItems  Boolean @default(false)
+
+  lastError String?   @db.Text
+  startedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  server  Server          @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  plugins PluginInstall[]
+  matches Match[]
+  events  GameEvent[]
+  console ConsoleLine[]
+  tasks   Task[]
+
+  @@unique([serverId, gamePort])
+  @@unique([serverId, containerName])
+  @@index([serverId])
+  @@map("game_instances")
+}
+
+enum PluginStatus {
+  PENDING
+  INSTALLED
+  FAILED
+  REMOVED
+  NEEDS_RECHECK
+}
+
+model PluginInstall {
+  id         String       @id @default(cuid())
+  instanceId String
+  pluginId   String
+  version    String
+  status     PluginStatus @default(PENDING)
+  lastError  String?      @db.Text
+  installedAt DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  instance GameInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@unique([instanceId, pluginId])
+  @@map("plugin_installs")
+}
+
+enum MatchState {
+  DRAFT
+  WARMUP
+  KNIFE
+  KNIFE_DECISION
+  LIVE
+  PAUSED
+  HALFTIME
+  OVERTIME
+  FINISHED
+  CANCELLED
+}
+
+model Match {
+  id         String     @id @default(cuid())
+  instanceId String
+  title      String
+  state      MatchState @default(DRAFT)
+  map        String
+
+  team1Name  String
+  team2Name  String
+  team1Score Int    @default(0)
+  team2Score Int    @default(0)
+  /// Which team currently plays CT: 1 or 2. Flipped on side swaps.
+  team1Side  String @default("CT")
+
+  maxRounds       Int     @default(24)
+  overtimeEnabled Boolean @default(true)
+  overtimeRounds  Int     @default(6)
+  knifeRound      Boolean @default(true)
+  /// Winner of the knife round: 1, 2 or null.
+  knifeWinner     Int?
+
+  /// Prefix passed to mp_backup_round_file, used to find restore points.
+  backupPrefix String
+  /// Name handed to `tv_record`, without the .dem extension. Set when the match
+  /// goes live, so a demo can be matched back to the match that produced it.
+  demoName     String?
+
+  lastError String?   @db.Text
+  startedAt DateTime?
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  instance    GameInstance     @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  events      GameEvent[]
+  transitions MatchTransition[]
+  players     MatchPlayer[]
+  demos       MatchDemo[]
+
+  @@index([instanceId, state])
+  @@map("matches")
+}
+
+/// Index of GOTV recordings found in the instance volume. The file itself stays
+/// on the game host; PPanel only records where it is and how big it got.
+model MatchDemo {
+  id         String   @id @default(cuid())
+  matchId    String
+  fileName   String
+  sizeBytes  BigInt   @default(0)
+  recordedAt DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, fileName])
+  @@map("match_demos")
+}
+
+model MatchTransition {
+  id        String     @id @default(cuid())
+  matchId   String
+  fromState MatchState
+  toState   MatchState
+  reason    String     @db.Text
+  createdAt DateTime   @default(now())
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([matchId, createdAt])
+  @@map("match_transitions")
+}
+
+model MatchPlayer {
+  id      String  @id @default(cuid())
+  matchId String
+  steamId String
+  name    String
+  team    Int
+  kills   Int     @default(0)
+  deaths  Int     @default(0)
+  assists Int     @default(0)
+  damage  Int     @default(0)
+  connected Boolean @default(false)
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, steamId])
+  @@map("match_players")
+}
+
+model GameEvent {
+  id         BigInt   @id @default(autoincrement())
+  instanceId String
+  matchId    String?
+  ts         DateTime
+  kind       String
+  category   String
+  sourceType String
+  round      Int?
+
+  actorName    String?
+  actorSteamId String?
+  actorSide    String?
+  targetName    String?
+  targetSteamId String?
+  targetSide    String?
+
+  data Json
+  raw  String @db.Text
+
+  createdAt DateTime @default(now())
+
+  instance GameInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  match    Match?       @relation(fields: [matchId], references: [id], onDelete: SetNull)
+
+  @@index([instanceId, ts])
+  @@index([matchId, ts])
+  @@index([instanceId, category, ts])
+  @@map("game_events")
+}
+
+/// Short-retention ring buffer so a freshly opened console tab has scrollback.
+model ConsoleLine {
+  id         BigInt   @id @default(autoincrement())
+  instanceId String
+  ts         DateTime
+  line       String   @db.Text
+
+  instance GameInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@index([instanceId, id])
+  @@map("console_lines")
+}
+
+enum TaskStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  TIMED_OUT
+}
+
+model Task {
+  id         String     @id @default(cuid())
+  serverId   String
+  instanceId String?
+  type       String
+  status     TaskStatus @default(QUEUED)
+  phase      String     @default("queued")
+  percent    Int?
+  message    String     @db.Text
+  error      String?    @db.Text
+  result     Json?
+  createdById String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  finishedAt DateTime?
+
+  server   Server        @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  instance GameInstance? @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+
+  @@index([serverId, createdAt])
+  @@index([instanceId, createdAt])
+  @@index([status])
+  @@map("tasks")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  targetType String
+  targetId   String?
+  meta       Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([targetType, targetId])
+  @@map("audit_logs")
+}

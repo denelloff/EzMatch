@@ -1,0 +1,27 @@
+{
+  "name": "ppanel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PPanel - control panel for CS2 dedicated servers and matches",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "pnpm -r --filter \"./packages/**\" build && pnpm -r --filter \"./apps/**\" build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "db:generate": "pnpm --filter @ppanel/db generate",
+    "db:migrate": "pnpm --filter @ppanel/db migrate",
+    "db:push": "pnpm --filter @ppanel/db push",
+    "dev:hub": "pnpm --filter @ppanel/hub dev",
+    "dev:panel": "pnpm --filter @ppanel/panel dev",
+    "dev:agent": "pnpm --filter @ppanel/agent dev"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.23.10",
+    "typescript": "^7.0.2"
+  }
+}
