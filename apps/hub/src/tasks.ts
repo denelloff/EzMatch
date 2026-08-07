@@ -40,31 +40,35 @@ export async function createTask(input: {
 export async function updateTask(
   taskId: string,
   update: TaskUpdate,
+  options?: { persist?: boolean },
 ): Promise<void> {
+  const persist = options?.persist !== false;
   const finished =
     update.status === 'SUCCEEDED' ||
     update.status === 'FAILED' ||
     update.status === 'TIMED_OUT';
 
-  try {
-    await db().task.update({
-      where: { id: taskId },
-      data: {
-        ...(update.status ? { status: update.status } : {}),
-        ...(update.phase ? { phase: update.phase } : {}),
-        ...(update.percent !== undefined ? { percent: update.percent } : {}),
-        ...(update.message ? { message: update.message } : {}),
-        ...(update.error !== undefined ? { error: update.error } : {}),
-        ...(update.result !== undefined
-          ? { result: update.result as object }
-          : {}),
-        ...(finished ? { finishedAt: new Date() } : {}),
-      },
-    });
-  } catch (error) {
-    // A task row disappearing mid-flight must not take down the operation that
-    // was reporting progress on it.
-    logger.warn({ taskId, error }, 'Failed to persist task update');
+  if (persist) {
+    try {
+      await db().task.update({
+        where: { id: taskId },
+        data: {
+          ...(update.status ? { status: update.status } : {}),
+          ...(update.phase ? { phase: update.phase } : {}),
+          ...(update.percent !== undefined ? { percent: update.percent } : {}),
+          ...(update.message ? { message: update.message } : {}),
+          ...(update.error !== undefined ? { error: update.error } : {}),
+          ...(update.result !== undefined
+            ? { result: update.result as object }
+            : {}),
+          ...(finished ? { finishedAt: new Date() } : {}),
+        },
+      });
+    } catch (error) {
+      // A task row disappearing mid-flight must not take down the operation that
+      // was reporting progress on it.
+      logger.warn({ taskId, error }, 'Failed to persist task update');
+    }
   }
 
   publishTask(taskId, update);

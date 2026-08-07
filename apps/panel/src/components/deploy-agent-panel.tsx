@@ -73,11 +73,32 @@ export interface DeployAgentLabels {
 export function DeployAgentPanel({
   taskId,
   labels,
+  initial,
 }: {
   taskId: string;
   labels: DeployAgentLabels;
+  initial?: {
+    status?: string;
+    phase?: string | null;
+    percent?: number | null;
+    message?: string | null;
+    error?: string | null;
+  } | null;
 }) {
-  const { update, log, live } = useTaskStream(taskId, 'refresh');
+  const { update, log, live } = useTaskStream(
+    taskId,
+    'refresh',
+    initial
+      ? {
+          taskId,
+          status: initial.status,
+          phase: initial.phase ?? undefined,
+          percent: initial.percent,
+          message: initial.message ?? undefined,
+          error: initial.error,
+        }
+      : null,
+  );
   const logRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
@@ -162,7 +183,7 @@ export function DeployAgentPanel({
 
         <pre
           ref={logRef}
-          className="console-surface max-h-[28rem] min-h-64 overflow-auto px-4 py-3 text-[12px] leading-relaxed text-ink-300"
+          className="console-surface max-h-[40rem] min-h-80 overflow-auto px-4 py-3 text-[12px] leading-relaxed text-ink-300"
         >
           {log.length > 0 ? log.join('\n') : labels.waiting}
         </pre>

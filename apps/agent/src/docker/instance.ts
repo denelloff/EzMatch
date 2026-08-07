@@ -320,17 +320,23 @@ export class InstanceManager {
       };
 
       const handleLine = (line: string) => {
-        const failure = steamError(line);
+        const cleaned = line.replace(/\r$/, '').trimEnd();
+        const failure = steamError(cleaned);
         if (failure) {
           cleanup();
           reject(new Error(`SteamCMD failed: ${failure}`));
           return;
         }
 
-        const gslt = gsltProblem(line);
-        if (gslt) report('downloading-game', gslt, null);
+        // Full console into the live task stream (percent null → SSE only).
+        if (cleaned.trim()) {
+          report('downloading-game', cleaned.trim().slice(0, 500), null);
+        }
 
-        const progress = parseSteamProgress(line);
+        const gslt = gsltProblem(cleaned);
+        if (gslt) report('downloading-game', gslt, lastReported || 15);
+
+        const progress = parseSteamProgress(cleaned);
         if (progress) {
           // 15..85 % of the task is the download itself.
           const percent =
@@ -350,13 +356,13 @@ export class InstanceManager {
           return;
         }
 
-        if (!installed && isInstallComplete(line)) {
+        if (!installed && isInstallComplete(cleaned)) {
           installed = true;
           report('starting', 'Game installed, starting the server', 88);
           return;
         }
 
-        if (isServerReady(line)) {
+        if (isServerReady(cleaned)) {
           report('verifying', 'Server is up', 95);
           cleanup();
           resolve();

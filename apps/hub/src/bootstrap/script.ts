@@ -166,6 +166,7 @@ if ! RUN_OUT="$($SUDO docker run -d \\
   --network ${shellQuote(network)} \\
   --env-file /etc/ppanel/agent.env \\
   -v /var/run/docker.sock:/var/run/docker.sock \\
+  -v /:/host:ro \\
   -v ${shellQuote(stateVolume)}:/var/lib/ppanel \\
   --label ppanel.role=agent \\
   ${shellQuote(agentImage)} 2>&1)"; then
@@ -178,6 +179,12 @@ STATE="$($SUDO docker inspect -f '{{.State.Status}}' ${shellQuote(containerName)
 if [ "$STATE" != "running" ]; then
   say error "Agent container is $STATE. Last output: $($SUDO docker logs --tail 20 ${shellQuote(containerName)} 2>&1 | tr '\\n' ' ')"
   exit 26
+fi
+
+say info "agent dials hub at ${hubUrl}"
+AGENT_LOG="$($SUDO docker logs --tail 30 ${shellQuote(containerName)} 2>&1 | tr '\\n' ' ' || true)"
+if [ -n "$AGENT_LOG" ]; then
+  say info "agent logs: $AGENT_LOG"
 fi
 
 say phase done

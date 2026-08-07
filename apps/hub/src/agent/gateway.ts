@@ -200,12 +200,18 @@ async function handleMessage(
       break;
 
     case 'taskProgress':
-      await updateTask(message.taskId, {
-        status: 'RUNNING',
-        phase: message.phase,
-        percent: message.percent,
-        message: message.message,
-      });
+      // SteamCMD floods lines; persist milestones (percent set) only, but always
+      // fan out to the live console over SSE.
+      await updateTask(
+        message.taskId,
+        {
+          status: 'RUNNING',
+          phase: message.phase,
+          percent: message.percent,
+          message: message.message,
+        },
+        { persist: message.percent != null },
+      );
       break;
 
     case 'taskResult':
