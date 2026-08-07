@@ -97,7 +97,17 @@ export default async function ServersPage({
                       </Badge>
                       <ServerListDelete
                         serverId={server.id}
-                        serverName={server.name}
+                        labels={{
+                          delete: t.serverDelete,
+                          title: t.serverDeleteTitle,
+                          body: t.serverDeleteBody.replace(
+                            '{name}',
+                            server.name,
+                          ),
+                          confirm: t.serverDeleteConfirm,
+                          cancel: t.serverDeleteCancel,
+                          failed: t.serverDeleteFailed,
+                        }}
                       />
                     </div>
                   }

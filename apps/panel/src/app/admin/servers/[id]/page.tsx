@@ -114,8 +114,17 @@ export default async function ServerPage({
             ) : null}
             <ServerActions
               serverId={server.id}
-              serverName={server.name}
               deleteError={deleteError ?? null}
+              revokeLabel={t.serverRevokeToken}
+              revokeConfirm={t.serverRevokeConfirm}
+              deleteLabels={{
+                delete: t.serverDelete,
+                title: t.serverDeleteTitle,
+                body: t.serverDeleteBody.replace('{name}', server.name),
+                confirm: t.serverDeleteConfirm,
+                cancel: t.serverDeleteCancel,
+                failed: t.serverDeleteFailed,
+              }}
             />
           </div>
         ) : null}

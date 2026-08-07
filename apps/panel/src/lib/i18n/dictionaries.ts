@@ -98,6 +98,16 @@ const en = {
   agent: 'Agent',
   freeDisk: 'Free disk',
   instances: 'Instances',
+  serverDelete: 'Delete',
+  serverDeleteTitle: 'Delete server?',
+  serverDeleteBody:
+    'Delete server “{name}” from the panel? This cannot be undone.',
+  serverDeleteConfirm: 'Delete server',
+  serverDeleteCancel: 'Cancel',
+  serverDeleteFailed: 'Failed to delete server.',
+  serverRevokeToken: 'Revoke token',
+  serverRevokeConfirm:
+    'Revoking the token disconnects the agent immediately. The server has to be bootstrapped again over SSH. Continue?',
 
   addServerTitle: 'Add host',
   addServerDescription:
@@ -304,6 +314,16 @@ const ru: Dictionary = {
   agent: 'Агент',
   freeDisk: 'Свободно на диске',
   instances: 'Инстансы',
+  serverDelete: 'Удалить',
+  serverDeleteTitle: 'Удалить сервер?',
+  serverDeleteBody:
+    'Удалить сервер «{name}» из панели? Это нельзя отменить.',
+  serverDeleteConfirm: 'Удалить сервер',
+  serverDeleteCancel: 'Отмена',
+  serverDeleteFailed: 'Не удалось удалить сервер.',
+  serverRevokeToken: 'Отозвать токен',
+  serverRevokeConfirm:
+    'Отзыв токена сразу отключает агент. Сервер придётся снова установить по SSH. Продолжить?',
 
   addServerTitle: 'Добавить хост',
   addServerDescription:

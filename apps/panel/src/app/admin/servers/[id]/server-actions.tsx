@@ -1,15 +1,23 @@
 'use client';
 
-import { dangerButtonClass, secondaryButtonClass } from '@/components/ui';
+import { secondaryButtonClass } from '@/components/ui';
+import {
+  DeleteServerButton,
+  type DeleteServerLabels,
+} from '../delete-server-button';
 
 export function ServerActions({
   serverId,
-  serverName,
   deleteError,
+  deleteLabels,
+  revokeLabel,
+  revokeConfirm,
 }: {
   serverId: string;
-  serverName: string;
   deleteError?: string | null;
+  deleteLabels: DeleteServerLabels;
+  revokeLabel: string;
+  revokeConfirm: string;
 }) {
   return (
     <div className="flex flex-col items-end gap-2">
@@ -18,37 +26,17 @@ export function ServerActions({
           method="post"
           action={`/admin/servers/${serverId}/revoke`}
           onSubmit={(event) => {
-            if (
-              !window.confirm(
-                'Revoking the token disconnects the agent immediately. The server has to be bootstrapped again over SSH. Continue?',
-              )
-            ) {
+            if (!window.confirm(revokeConfirm)) {
               event.preventDefault();
             }
           }}
         >
           <button type="submit" className={secondaryButtonClass}>
-            Revoke token
+            {revokeLabel}
           </button>
         </form>
 
-        <form
-          method="post"
-          action={`/admin/servers/${serverId}/delete`}
-          onSubmit={(event) => {
-            if (
-              !window.confirm(
-                `Delete server “${serverName}” from the panel? This cannot be undone.`,
-              )
-            ) {
-              event.preventDefault();
-            }
-          }}
-        >
-          <button type="submit" className={dangerButtonClass}>
-            Delete
-          </button>
-        </form>
+        <DeleteServerButton serverId={serverId} labels={deleteLabels} />
       </div>
 
       {deleteError ? (
