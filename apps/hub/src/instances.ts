@@ -38,6 +38,7 @@ export async function loadCs2Config(
       startMap: instance.startMap,
       lan: instance.lan,
       hibernate: instance.hibernate,
+      vacDisabled: instance.vacDisabled,
       extraArgs: instance.extraArgs,
     },
   };
@@ -213,7 +214,7 @@ export async function createInstanceTask(
       config: cs2Config,
       ports: { game: instance.gamePort, tv: instance.tvPort },
       plugins,
-      minFreeBytes: config.agent.minFreeBytes,
+      minFreeBytes: config.agent.cs2MinFreeBytes,
     },
     onSuccess: async (result) => {
       const payload = result as {

@@ -1,8 +1,7 @@
+import { spawn } from 'node:child_process';
 import type Docker from 'dockerode';
 import { docker, pullImage } from './docker/client.js';
 import { log } from './logger.js';
-
-const HELPER_IMAGE = process.env.PPANEL_UPDATE_HELPER_IMAGE ?? 'docker:27-cli';
 
 /** Only digest/tag refs — never shell metacharacters. */
 const SAFE_IMAGE = /^[a-zA-Z0-9._\/:-]+$/;
@@ -15,9 +14,9 @@ export type UpdateProgress = (
 ) => void;
 
 /**
- * Pulls `image`, creates a replacement container, then starts a short-lived
- * helper that swaps it in after this process returns. The current agent keeps
- * answering until the helper stops it.
+ * Pulls `image`, creates a replacement container, then detaches a local
+ * `docker` CLI swap script. We deliberately do not pull a helper image
+ * (docker:cli) — that hung on hosts that cannot reach Docker Hub quickly.
  */
 export async function scheduleAgentUpdate(input: {
   containerName: string;
@@ -51,8 +50,7 @@ export async function scheduleAgentUpdate(input: {
   await createReplacement(tempName, image, current);
 
   progress('scheduling', 'Scheduling container swap', 75);
-  await pullImage(HELPER_IMAGE).catch(() => undefined);
-  await startSwapHelper(containerName, tempName);
+  scheduleLocalSwap(containerName, tempName);
 
   progress('restarting', 'Restarting with the new image', 90);
   log.info('agent update scheduled', { containerName, image, tempName });
@@ -90,42 +88,29 @@ async function createReplacement(
       Binds: binds,
       NetworkMode: networkMode,
       RestartPolicy: restart,
-      // Keep the same docker.sock / host mounts the previous container had.
     },
   });
 }
 
 /**
- * Helper with the Docker CLI stops the live agent, drops it, renames the
- * prepared replacement into place, and starts it. Auto-remove cleans up.
+ * Detach a shell that uses the host docker CLI via the mounted socket. The
+ * agent image ships `docker-cli` so we never need a second pull.
  */
-async function startSwapHelper(
-  containerName: string,
-  tempName: string,
-): Promise<void> {
+function scheduleLocalSwap(containerName: string, tempName: string): void {
   const script = [
     'set -eu',
-    'sleep 3',
+    'sleep 2',
     `docker stop ${shellQuote(containerName)} || true`,
     `docker rm -f ${shellQuote(containerName)} || true`,
     `docker rename ${shellQuote(tempName)} ${shellQuote(containerName)}`,
     `docker start ${shellQuote(containerName)}`,
   ].join('\n');
 
-  const helperName = `ppanel-agent-swap-${Date.now()}`;
-  await removeIfExists(helperName);
-
-  const helper = await docker.createContainer({
-    name: helperName,
-    Image: HELPER_IMAGE,
-    Cmd: ['sh', '-c', script],
-    HostConfig: {
-      Binds: ['/var/run/docker.sock:/var/run/docker.sock'],
-      AutoRemove: true,
-      NetworkMode: 'none',
-    },
+  const child = spawn('sh', ['-c', script], {
+    detached: true,
+    stdio: 'ignore',
   });
-  await helper.start();
+  child.unref();
 }
 
 function shellQuote(value: string): string {

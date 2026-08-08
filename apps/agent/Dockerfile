@@ -20,9 +20,9 @@ RUN pnpm --filter @ppanel/protocol build \
 
 FROM node:24-alpine AS runtime
 
-# The agent shells into CS2 containers for mkdir and rm; nothing here needs a
-# package manager at runtime.
-RUN apk add --no-cache tini \
+# tini for PID 1; docker-cli so the agent can detach a self-update swap without
+# pulling a separate helper image (which often hangs behind slow registries).
+RUN apk add --no-cache tini docker-cli \
  && addgroup -S ppanel && adduser -S -G ppanel ppanel
 
 WORKDIR /app

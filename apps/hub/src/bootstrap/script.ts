@@ -116,7 +116,7 @@ DOCKER_ROOT="$($SUDO docker info --format '{{.DockerRootDir}}' 2>/dev/null || ec
 FREE_BYTES="$(df -PB1 "$DOCKER_ROOT" | awk 'NR==2 {print $4}')"
 say info "docker_root=$DOCKER_ROOT free_bytes=$FREE_BYTES"
 if [ "\${FREE_BYTES:-0}" -lt ${minFreeBytes} ]; then
-  say error "Not enough free disk on $DOCKER_ROOT: $FREE_BYTES bytes available, ${minFreeBytes} required. CS2 alone is about 60 GB."
+  say error "Not enough free disk on $DOCKER_ROOT: $FREE_BYTES bytes available, ${minFreeBytes} required to install/update the agent."
   exit 25
 fi
 
