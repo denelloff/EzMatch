@@ -7,7 +7,7 @@ import { isPluginId, resolvePluginOrder } from '@ppanel/protocol';
 import { assertRole, audit, ForbiddenError } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { hubFetch, HubError } from '@/lib/hub';
-import { generatePassword, seal } from '@/lib/secrets';
+import { seal } from '@/lib/secrets';
 
 const FIRST_GAME_PORT = 27015;
 const FIRST_TV_PORT = 27020;
@@ -23,6 +23,7 @@ const schema = z.object({
   name: z.string().min(1).max(48),
   serverTitle: z.string().min(1).max(64),
   gsltToken: z.string().min(8).max(64),
+  rconPassword: z.string().min(8).max(64),
   joinPassword: z.string().max(64).optional(),
   maxPlayers: z.coerce.number().int().min(2).max(64),
   gameMode: z.coerce.number().int().min(0).max(2),
@@ -31,6 +32,8 @@ const schema = z.object({
     .min(1)
     .max(64)
     .regex(/^[a-z0-9_]+$/, 'Map names are lowercase letters, digits and underscores'),
+  vacDisabled: z.boolean().default(false),
+  botsDisabled: z.boolean().default(true),
   extraArgs: z
     .string()
     .max(512)
@@ -58,10 +61,13 @@ export async function createInstanceAction(
       name: formData.get('name'),
       serverTitle: formData.get('serverTitle'),
       gsltToken: formData.get('gsltToken'),
+      rconPassword: formData.get('rconPassword'),
       joinPassword: formData.get('joinPassword') || undefined,
       maxPlayers: formData.get('maxPlayers') || 10,
       gameMode: formData.get('gameMode') || 1,
       startMap: formData.get('startMap') || 'de_dust2',
+      vacDisabled: formData.get('vacDisabled') === 'on',
+      botsDisabled: formData.get('botsDisabled') === 'on',
       extraArgs: formData.get('extraArgs') || undefined,
       plugins: formData.getAll('plugins').map(String),
     });
@@ -111,15 +117,15 @@ export async function createInstanceAction(
         tvPort,
         state: 'CREATING',
         gsltTokenEnc: seal(input.gsltToken),
-        // Generated rather than asked for: nothing outside the agent needs it,
-        // and a human-chosen RCON password on a public port is a liability.
-        rconPasswordEnc: seal(generatePassword()),
+        rconPasswordEnc: seal(input.rconPassword),
         joinPasswordEnc: input.joinPassword ? seal(input.joinPassword) : '',
         serverTitle: input.serverTitle,
         maxPlayers: input.maxPlayers,
         gameType: 0,
         gameMode: input.gameMode,
         startMap: input.startMap,
+        vacDisabled: input.vacDisabled,
+        botsDisabled: input.botsDisabled,
         extraArgs: input.extraArgs ?? '',
         plugins: {
           create: plugins.map((pluginId) => ({

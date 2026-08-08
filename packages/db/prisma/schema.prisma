@@ -133,6 +133,10 @@ model GameInstance {
   startMap    String  @default("de_dust2")
   lan         Boolean @default(false)
   hibernate   Boolean @default(false)
+  /// When true the agent adds `-insecure` (VAC off).
+  vacDisabled Boolean @default(false)
+  /// When true bots are disabled (bot_quota 0 + kick on start).
+  botsDisabled Boolean @default(true)
   extraArgs   String  @default("") @db.Text
 
   logDetail Int     @default(3)

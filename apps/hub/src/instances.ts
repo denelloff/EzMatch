@@ -39,6 +39,7 @@ export async function loadCs2Config(
       lan: instance.lan,
       hibernate: instance.hibernate,
       vacDisabled: instance.vacDisabled,
+      botsDisabled: instance.botsDisabled,
       extraArgs: instance.extraArgs,
     },
   };

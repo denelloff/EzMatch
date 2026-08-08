@@ -125,6 +125,21 @@ export function InstanceForm({
             />
           </Field>
 
+          <Field
+            label="RCON password"
+            hint="At least 8 characters. Used for CS2_RCONPW and, if Fake RCON is selected, copied into its config automatically."
+          >
+            <input
+              name="rconPassword"
+              type="password"
+              required
+              minLength={8}
+              maxLength={64}
+              autoComplete="new-password"
+              className={inputClass}
+            />
+          </Field>
+
           <Field label="Join password" hint="Optional. Leave empty for a public server.">
             <input
               name="joinPassword"
@@ -172,10 +187,41 @@ export function InstanceForm({
 
           <Field
             label="Extra launch arguments"
-            hint="Optional, e.g. -tickrate 64. No shell syntax."
+            hint="Optional, e.g. -tickrate 64. No shell syntax. VAC off adds -insecure separately."
           >
             <input name="extraArgs" maxLength={512} className={inputClass} />
           </Field>
+
+          <label className="flex items-start gap-3 sm:col-span-2">
+            <input
+              type="checkbox"
+              name="botsDisabled"
+              defaultChecked
+              className={clsx('mt-1', checkboxClass)}
+            />
+            <span>
+              <span className="block text-sm text-ink-100">Disable bots</span>
+              <span className="mt-0.5 block text-xs text-ink-400">
+                Sets <span className="console-surface">bot_quota 0</span>. Recommended for
+                match servers.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-3 sm:col-span-2">
+            <input
+              type="checkbox"
+              name="vacDisabled"
+              className={clsx('mt-1', checkboxClass)}
+            />
+            <span>
+              <span className="block text-sm text-ink-100">Disable VAC</span>
+              <span className="mt-0.5 block text-xs text-ink-400">
+                Starts the server with <span className="console-surface">-insecure</span>.
+                Needed for some plugins and community setups; players see an insecure server.
+              </span>
+            </span>
+          </label>
         </div>
       </Card>
 

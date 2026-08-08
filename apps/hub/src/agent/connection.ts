@@ -41,6 +41,7 @@ const COMMAND_TIMEOUT_MS: Partial<Record<Command['type'], number>> = {
   'plugin.remove': 5 * 60_000,
   'instance.stop': 5 * 60_000,
   'instance.remove': 10 * 60_000,
+  'instance.reconfigure': 10 * 60_000,
 };
 
 export class AgentConnection {

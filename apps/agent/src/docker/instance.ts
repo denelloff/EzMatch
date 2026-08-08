@@ -668,6 +668,52 @@ export class InstanceManager {
     }
   }
 
+  /**
+   * Applies a new CS2 config by recreating the container with fresh env while
+   * keeping the same volume, ports and network. SteamCMD is not re-run.
+   */
+  async reconfigure(
+    instanceId: string,
+    config: Cs2Config,
+    report: ProgressReporter,
+  ): Promise<void> {
+    const instance = this.get(instanceId);
+    this.lifecycleQuiet.add(instanceId);
+    instance.desiredRunning = true;
+
+    try {
+      report('stopping', 'Stopping to apply settings', 10);
+      instance.console.stop();
+      this.setState(instance, 'stopping');
+
+      try {
+        await docker.getContainer(instance.containerName).stop({ t: 30 });
+      } catch (error) {
+        if (!isAlreadyInState(error) && !isNotFound(error)) throw error;
+      }
+
+      report('recreating', 'Recreating the container with new settings', 45);
+      await recreateWithConfig(instance, config, this.config);
+
+      instance.secrets = [
+        config.gsltToken,
+        config.rconPassword,
+        config.joinPassword,
+      ].filter((value) => value.length > 0);
+      instance.console.setSecrets(instance.secrets);
+
+      report('starting', 'Starting with the new settings', 75);
+      await docker.getContainer(instance.containerName).start();
+      instance.startedAt = new Date().toISOString();
+      await this.refreshBuildId(instance);
+      await this.attachConsole(instance);
+      this.setState(instance, 'running');
+      report('done', 'Settings applied', 100);
+    } finally {
+      this.releaseLifecycleQuiet(instanceId);
+    }
+  }
+
   async inspect(instanceId: string): Promise<InstanceSnapshot> {
     const instance = this.get(instanceId);
     const details = await docker
@@ -761,7 +807,7 @@ function buildEnv(config: Cs2Config, agent: AgentConfig): string[] {
     CS2_LAN: config.lan ? '1' : '0',
     CS2_SERVER_HIBERNATE: config.hibernate ? '1' : '0',
     CS2_ADDITIONAL_ARGS: buildAdditionalArgs(config),
-    CS2_BOT_QUOTA: '0',
+    CS2_BOT_QUOTA: config.botsDisabled ? '0' : '10',
     STEAMAPPVALIDATE: '0',
     TZ: process.env.TZ ?? 'UTC',
     // The panel applies logging cvars over the console once the server is up,
@@ -815,6 +861,30 @@ async function recreateWithEnv(
   for (const [key, value] of Object.entries(overrides)) {
     env.push(`${key}=${value}`);
   }
+
+  await container.remove({ force: true });
+  await docker.createContainer({
+    name: instance.containerName,
+    Image: details.Config.Image,
+    Tty: true,
+    OpenStdin: true,
+    StdinOnce: false,
+    Env: env,
+    Labels: details.Config.Labels,
+    ExposedPorts: details.Config.ExposedPorts,
+    HostConfig: details.HostConfig,
+  });
+}
+
+/** Recreates the container replacing the full CS2 env from a new config. */
+async function recreateWithConfig(
+  instance: ManagedInstance,
+  config: Cs2Config,
+  agent: AgentConfig,
+): Promise<void> {
+  const container = docker.getContainer(instance.containerName);
+  const details = await container.inspect();
+  const env = buildEnv(config, agent);
 
   await container.remove({ force: true });
   await docker.createContainer({

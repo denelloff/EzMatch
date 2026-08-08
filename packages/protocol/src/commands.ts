@@ -24,6 +24,8 @@ export const zCs2Config = z.object({
   hibernate: z.boolean().default(false),
   /** Maps to `-insecure` so VAC is not enforced on this dedicated server. */
   vacDisabled: z.boolean().default(false),
+  /** When true, CS2_BOT_QUOTA=0 and bot_kick runs after start/reconfigure. */
+  botsDisabled: z.boolean().default(true),
   /** Appended verbatim to the cs2 command line. Panel-side validated. */
   extraArgs: z.string().default(''),
 });

@@ -1,8 +1,10 @@
 import type { Command, InstanceSnapshot, PluginSpec } from '@ppanel/protocol';
 import type { AgentConfig } from './config.js';
 import { listDemos } from './demos.js';
+import { readTextFile } from './docker/archive.js';
 import { docker, dockerFacts } from './docker/client.js';
 import type { InstanceManager } from './docker/instance.js';
+import { resolveInstallPath } from './docker/paths.js';
 import { collectHostInfo, freeBytesFor } from './host.js';
 import type { LogServer } from './logs/server.js';
 import { log } from './logger.js';
@@ -71,11 +73,13 @@ export async function executeCommand(
       }
 
       await applyLogSink(command.instanceId, 3, false, context);
+      await enforceNoBotsIfConfigured(command.instanceId, context);
       return result;
     }
 
     case 'instance.start':
       await context.instances.start(command.instanceId);
+      await enforceNoBotsIfConfigured(command.instanceId, context);
       return context.instances.snapshot(context.instances.get(command.instanceId));
 
     case 'instance.stop':
@@ -84,6 +88,7 @@ export async function executeCommand(
 
     case 'instance.restart':
       await context.instances.restart(command.instanceId);
+      await enforceNoBotsIfConfigured(command.instanceId, context);
       return context.instances.snapshot(context.instances.get(command.instanceId));
 
     case 'instance.remove':
@@ -123,13 +128,39 @@ export async function executeCommand(
     case 'instance.list':
       return context.instances.snapshots() satisfies InstanceSnapshot[];
 
-    case 'instance.reconfigure':
-      // Changing the CS2 config means changing container environment, which
-      // requires recreating the container. Reported explicitly rather than
-      // pretending it took effect.
-      throw new Error(
-        'Changing server settings requires recreating the container, which is not implemented yet. Remove the instance and create it again.',
+    case 'instance.reconfigure': {
+      await context.instances.reconfigure(
+        command.instanceId,
+        command.config,
+        context.progress,
       );
+      const instance = context.instances.get(command.instanceId);
+      try {
+        const vdf = await readTextFile(
+          docker.getContainer(instance.containerName),
+          resolveInstallPath('game/csgo/addons/metamod/fake_rcon.vdf'),
+        );
+        if (vdf) {
+          await writeFakeRconPassword(
+            instance.containerName,
+            command.config.rconPassword,
+          );
+        }
+      } catch (error) {
+        log.warn('fake_rcon password refresh skipped', { error });
+      }
+      await applyLogSink(command.instanceId, 3, false, context);
+      if (command.config.botsDisabled) {
+        await instance.console.sendAndCapture(
+          [
+            { command: 'bot_quota 0', delayMs: 200 },
+            { command: 'bot_kick', delayMs: 0 },
+          ],
+          500,
+        );
+      }
+      return { reconfigured: true };
+    }
 
     case 'instance.setRestartPolicy': {
       const instance = context.instances.get(command.instanceId);
@@ -274,6 +305,27 @@ async function readContainerEnv(
     if (entry.startsWith(prefix)) return entry.slice(prefix.length);
   }
   return null;
+}
+
+/** If CS2_BOT_QUOTA is 0, push bot_quota/bot_kick so fill bots do not stay. */
+async function enforceNoBotsIfConfigured(
+  instanceId: string,
+  context: CommandContext,
+): Promise<void> {
+  const instance = context.instances.get(instanceId);
+  const quota = await readContainerEnv(instance.containerName, 'CS2_BOT_QUOTA');
+  if (quota !== '0') return;
+  try {
+    await instance.console.sendAndCapture(
+      [
+        { command: 'bot_quota 0', delayMs: 200 },
+        { command: 'bot_kick', delayMs: 0 },
+      ],
+      500,
+    );
+  } catch (error) {
+    log.warn('bot_kick after start skipped', { instanceId, error });
+  }
 }
 
 async function sleep(ms: number): Promise<void> {

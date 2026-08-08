@@ -4,6 +4,7 @@ import { PLUGIN_DESCRIPTIONS } from '@ppanel/protocol';
 import { hasRole, requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { formatRelative } from '@/lib/format';
+import { getT } from '@/lib/i18n';
 import { Badge, Card, CardHeader, Notice, buttonClass } from '@/components/ui';
 import { EventFeed, type FeedEvent } from '@/components/event-feed';
 import { ConsoleView } from './console-view';
@@ -25,6 +26,7 @@ export default async function InstancePage({
   params: Promise<{ id: string }>;
 }) {
   const user = await requireUser();
+  const t = await getT();
   const { id } = await params;
 
   const instance = await prisma.gameInstance.findUnique({
@@ -90,21 +92,24 @@ export default async function InstancePage({
           </p>
         </div>
 
-        {instance.matches[0] ? (
-          <Link
-            href={`/matches/${instance.matches[0].id}`}
-            className="rounded-lg border border-brand-500/40 bg-brand-500/10 px-3.5 py-2 text-sm text-brand-500"
-          >
-            Match in progress: {instance.matches[0].title}
-          </Link>
-        ) : canOperate && running ? (
-          <Link
-            href={`/admin/instances/${instance.id}/matches/new`}
-            className={buttonClass}
-          >
-            Start a match
-          </Link>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {instance.matches[0] ? (
+            <Link
+              href={`/matches/${instance.matches[0].id}`}
+              className="rounded-lg border border-brand-500/40 bg-brand-500/10 px-3.5 py-2 text-sm text-brand-500"
+            >
+              Match in progress: {instance.matches[0].title}
+            </Link>
+          ) : null}
+          {canAdmin && instance.state !== 'REMOVED' && instance.state !== 'CREATING' ? (
+            <Link
+              href={`/admin/instances/${instance.id}/edit`}
+              className={buttonClass}
+            >
+              Edit
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       {instance.lastError ? (
@@ -124,6 +129,7 @@ export default async function InstancePage({
                 ? 'Metamod and CounterStrikeSharp are installed here. They link against the game binaries and regularly stop loading after a CS2 patch, which leaves the server up but without plugins until newer builds are pinned in the catalog. Verify with meta list right after the update.'
                 : null
             }
+            deleteLabel={t.instanceDelete}
           />
         </div>
       </Card>
