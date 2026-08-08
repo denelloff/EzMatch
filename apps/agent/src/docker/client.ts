@@ -70,14 +70,59 @@ export async function pullImage(
   image: string,
   onProgress?: (event: PullProgress) => void,
 ): Promise<void> {
-  const stream = await docker.pull(image);
-  await new Promise<void>((resolve, reject) => {
-    docker.modem.followProgress(
-      stream,
-      (error: Error | null) => (error ? reject(error) : resolve()),
-      (event: PullProgress) => onProgress?.(event),
+  try {
+    const auth = ghcrAuthFromEnv();
+    const stream = auth
+      ? await docker.pull(image, { authconfig: auth })
+      : await docker.pull(image);
+    await new Promise<void>((resolve, reject) => {
+      docker.modem.followProgress(
+        stream,
+        (error: Error | null) => (error ? reject(error) : resolve()),
+        (event: PullProgress) => onProgress?.(event),
+      );
+    });
+  } catch (error) {
+    throw mapPullError(image, error);
+  }
+}
+
+/**
+ * Optional GHCR credentials for private agent images.
+ * Prefer making `ghcr.io/.../ez-agent` public so game hosts need no login.
+ */
+function ghcrAuthFromEnv(): {
+  username: string;
+  password: string;
+  serveraddress: string;
+} | null {
+  const password =
+    process.env.PPANEL_GHCR_TOKEN?.trim() ||
+    process.env.GHCR_TOKEN?.trim() ||
+    process.env.GITHUB_TOKEN?.trim() ||
+    '';
+  if (!password) return null;
+  const username =
+    process.env.PPANEL_GHCR_USER?.trim() ||
+    process.env.GHCR_USER?.trim() ||
+    'token';
+  return {
+    username,
+    password,
+    serveraddress: 'ghcr.io',
+  };
+}
+
+function mapPullError(image: string, error: unknown): Error {
+  const text = error instanceof Error ? error.message : String(error);
+  if (/unauthorized|authentication required|denied/i.test(text)) {
+    return new Error(
+      `Cannot pull ${image}: registry returned unauthorized. ` +
+        `Make the GHCR package public (Package settings → Change visibility → Public), ` +
+        `or set PPANEL_GHCR_TOKEN on the agent for a private pull. Original: ${text}`,
     );
-  });
+  }
+  return error instanceof Error ? error : new Error(text);
 }
 
 export function dockerStatusCode(error: unknown): number | undefined {

@@ -4,8 +4,12 @@ import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { PluginCatalogEntry } from '@ppanel/protocol';
 import { TaskProgress } from '@/components/task-progress';
-import { Badge, secondaryButtonClass } from '@/components/ui';
-import { pluginAction, type LifecycleState } from './actions';
+import {
+  Badge,
+  dangerButtonClass,
+  secondaryButtonClass,
+} from '@/components/ui';
+import { pluginAction, type PluginActionState } from './actions';
 
 export interface InstalledPlugin {
   pluginId: string;
@@ -35,12 +39,13 @@ export function PluginPanel({
   canAdmin: boolean;
   staleBuild: boolean;
 }) {
-  const [result, formAction] = useActionState<LifecycleState, FormData>(
+  const [result, formAction] = useActionState<PluginActionState, FormData>(
     pluginAction,
-    { error: null, taskId: null },
+    { error: null, taskId: null, message: null, title: null },
   );
 
   const byId = new Map(installed.map((entry) => [entry.pluginId, entry]));
+  const hasInstalled = installed.some((entry) => entry.status === 'INSTALLED');
 
   return (
     <div>
@@ -52,15 +57,39 @@ export function PluginPanel({
         </p>
       ) : null}
 
+      {canAdmin ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-ink-700 px-5 py-3">
+          <form action={formAction}>
+            <input type="hidden" name="instanceId" value={instanceId} />
+            <input type="hidden" name="action" value="check-updates" />
+            <SubmitButton label="Check for updates" disabled={!canAdmin} />
+          </form>
+          <form action={formAction}>
+            <input type="hidden" name="instanceId" value={instanceId} />
+            <input type="hidden" name="action" value="remove-all" />
+            <SubmitButton
+              label="Remove all plugins"
+              disabled={!canAdmin || !hasInstalled}
+              danger
+            />
+          </form>
+        </div>
+      ) : null}
+
       <ul className="divide-y divide-ink-700">
         {catalog.map((plugin) => {
           const current = byId.get(plugin.id);
           const active = current?.status === 'INSTALLED';
+          const updateAvailable =
+            current?.status === 'NEEDS_RECHECK' ||
+            (current?.status === 'INSTALLED' &&
+              current.version !== 'pending' &&
+              current.version !== plugin.version);
           return (
             <li key={plugin.id} className="px-5 py-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-sm text-ink-100">
+                  <p className="flex flex-wrap items-center gap-2 text-sm text-ink-100">
                     {plugin.name}
                     <span className="text-xs text-ink-400">
                       {current?.version && current.version !== 'pending'
@@ -70,6 +99,11 @@ export function PluginPanel({
                     {current ? (
                       <Badge tone={STATUS_TONE[current.status] ?? 'neutral'}>
                         {current.status.toLowerCase()}
+                      </Badge>
+                    ) : null}
+                    {updateAvailable ? (
+                      <Badge tone="warn">
+                        update {plugin.version}
                       </Badge>
                     ) : null}
                   </p>
@@ -90,7 +124,15 @@ export function PluginPanel({
                     value={active ? 'remove' : 'install'}
                   />
                   <SubmitButton
-                    label={active ? 'Remove' : current ? 'Reinstall' : 'Install'}
+                    label={
+                      active
+                        ? 'Remove'
+                        : updateAvailable
+                          ? 'Update'
+                          : current
+                            ? 'Reinstall'
+                            : 'Install'
+                    }
                     disabled={!canAdmin}
                   />
                 </form>
@@ -106,12 +148,18 @@ export function PluginPanel({
         </p>
       ) : null}
 
+      {result.message ? (
+        <pre className="border-t border-ink-700 bg-ink-950/50 px-5 py-3 text-xs leading-relaxed text-ink-300 whitespace-pre-wrap">
+          {result.message}
+        </pre>
+      ) : null}
+
       {result.taskId ? (
         <div className="border-t border-ink-700 p-4">
           <TaskProgress
             key={result.taskId}
             taskId={result.taskId}
-            title="Installing plugins"
+            title={result.title ?? 'Working'}
             onDone="refresh"
           />
         </div>
@@ -120,12 +168,20 @@ export function PluginPanel({
   );
 }
 
-function SubmitButton({ label, disabled }: { label: string; disabled: boolean }) {
+function SubmitButton({
+  label,
+  disabled,
+  danger = false,
+}: {
+  label: string;
+  disabled: boolean;
+  danger?: boolean;
+}) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      className={secondaryButtonClass}
+      className={danger ? dangerButtonClass : secondaryButtonClass}
       disabled={disabled || pending}
     >
       {pending ? 'Working…' : label}

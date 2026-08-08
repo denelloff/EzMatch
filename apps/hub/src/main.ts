@@ -10,6 +10,7 @@ import { registerInstanceRoutes } from './routes/instances.js';
 import { registerMatchRoutes } from './routes/matches.js';
 import { registerServerRoutes } from './routes/servers.js';
 import { registerStreamRoutes } from './routes/stream.js';
+import { registerTaskRoutes } from './routes/tasks.js';
 
 const CONSOLE_PRUNE_INTERVAL_MS = 5 * 60_000;
 
@@ -33,6 +34,7 @@ async function main(): Promise<void> {
   registerInstanceRoutes(app, config);
   registerMatchRoutes(app);
   registerStreamRoutes(app);
+  registerTaskRoutes(app);
 
   await app.listen({ host: config.host, port: config.port });
 

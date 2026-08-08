@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-export const zPluginId = z.enum(['metamod', 'counterstrikesharp', 'fake_rcon']);
+export const zPluginId = z.enum([
+  'metamod',
+  'counterstrikesharp',
+  'fake_rcon',
+  'ez_csay',
+]);
 export type PluginId = z.infer<typeof zPluginId>;
 
 export const zArchiveFormat = z.enum(['tar.gz', 'zip']);

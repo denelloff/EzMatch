@@ -5,7 +5,7 @@ import { bootstrapServer, waitForAgent } from '../bootstrap/index.js';
 import type { HubConfig } from '../config.js';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
-import { createTask, failTask, updateTask } from '../tasks.js';
+import { createTask, failTask, isTaskCancelledError, updateTask } from '../tasks.js';
 
 const AGENT_RECONNECT_MS = 90_000;
 
@@ -169,6 +169,7 @@ export function registerServerRoutes(app: HubApp, config: HubConfig): void {
             error: null,
           });
         } catch (error) {
+          if (isTaskCancelledError(error)) return;
           logger.error({ error, serverId: server.id }, 'agent update failed');
           await failTask(taskId, error);
           await db().server.update({

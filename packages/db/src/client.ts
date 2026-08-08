@@ -10,7 +10,7 @@ let singleton: PrismaClient | undefined;
  * An old `globalThis` client from before a generate still validates against the
  * previous DataModel and throws "Unknown argument …" until it is replaced.
  */
-const PRISMA_CLIENT_REV = 3;
+const PRISMA_CLIENT_REV = 4;
 
 export interface PrismaOptions {
   /** MariaDB connection string, e.g. mysql://user:pass@host:3306/ppanel */

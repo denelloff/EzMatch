@@ -16,6 +16,7 @@ import { Spool } from './spool.js';
 export type CommandHandler = (
   taskId: string,
   command: Command,
+  signal: AbortSignal,
 ) => Promise<unknown>;
 
 export interface HubClientHooks {
@@ -43,6 +44,7 @@ export class HubClient {
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private stopped = false;
   private connected = false;
+  private readonly controllers = new Map<string, AbortController>();
 
   constructor(
     private readonly config: AgentConfig,
@@ -196,13 +198,24 @@ export class HubClient {
       case 'command':
         await this.runCommand(message.taskId, message.command);
         break;
+
+      case 'cancel': {
+        const controller = this.controllers.get(message.taskId);
+        if (controller) {
+          log.info('cancelling command', { taskId: message.taskId });
+          controller.abort();
+        }
+        break;
+      }
     }
   }
 
   private async runCommand(taskId: string, command: Command): Promise<void> {
     log.info('command received', { taskId, type: command.type });
+    const controller = new AbortController();
+    this.controllers.set(taskId, controller);
     try {
-      const data = await this.hooks.onCommand(taskId, command);
+      const data = await this.hooks.onCommand(taskId, command, controller.signal);
       this.send({
         type: 'taskResult',
         seq: 0,
@@ -222,6 +235,8 @@ export class HubClient {
         data: null,
         error: text,
       });
+    } finally {
+      this.controllers.delete(taskId);
     }
   }
 

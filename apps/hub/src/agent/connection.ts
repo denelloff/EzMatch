@@ -11,6 +11,7 @@ import {
   type InstanceSnapshot,
 } from '@ppanel/protocol';
 import { logger } from '../logger.js';
+import { TaskCancelledError } from '../tasks.js';
 
 export interface PendingCommand {
   resolve: (value: unknown) => void;
@@ -127,6 +128,17 @@ export class AgentConnection {
     } else {
       pending.reject(new Error(error ?? `${pending.type} failed`));
     }
+  }
+
+  /** Abort a pending command on the hub and ask the agent to stop work. */
+  cancel(taskId: string): void {
+    const pending = this.pending.get(taskId);
+    if (pending) {
+      this.pending.delete(taskId);
+      clearTimeout(pending.timer);
+      pending.reject(new TaskCancelledError());
+    }
+    this.send({ type: 'cancel', taskId });
   }
 
   close(code = 1000, reason = 'closed by hub'): void {

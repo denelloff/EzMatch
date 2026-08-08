@@ -190,31 +190,93 @@ export async function instanceLifecycleAction(
 
 const pluginSchema = z.object({
   instanceId: z.string().min(1).max(64),
-  pluginId: z.string().min(1).max(64),
-  action: z.enum(['install', 'remove']),
+  pluginId: z.string().min(1).max(64).optional(),
+  action: z.enum(['install', 'remove', 'remove-all', 'check-updates']),
 });
 
+export type PluginActionState = {
+  error: string | null;
+  taskId: string | null;
+  message: string | null;
+  title: string | null;
+};
+
 export async function pluginAction(
-  _prev: LifecycleState,
+  _prev: PluginActionState,
   formData: FormData,
-): Promise<LifecycleState> {
+): Promise<PluginActionState> {
   try {
     const user = await assertRole('ADMIN');
 
     const parsed = pluginSchema.safeParse({
       instanceId: formData.get('instanceId'),
-      pluginId: formData.get('pluginId'),
+      pluginId: formData.get('pluginId') || undefined,
       action: formData.get('action'),
     });
-    if (!parsed.success) return { error: 'Invalid request', taskId: null };
+    if (!parsed.success) {
+      return { error: 'Invalid request', taskId: null, message: null, title: null };
+    }
     const input = parsed.data;
+
+    if (
+      (input.action === 'install' || input.action === 'remove') &&
+      !input.pluginId
+    ) {
+      return { error: 'Invalid request', taskId: null, message: null, title: null };
+    }
+
+    if (input.action === 'check-updates') {
+      const result = await hubFetch<{
+        updates: Array<{
+          name: string;
+          installedVersion: string;
+          catalogVersion: string;
+        }>;
+        upToDate: Array<{ name: string; installedVersion: string }>;
+      }>(`/internal/instances/${input.instanceId}/plugins`, {
+        method: 'POST',
+        body: {
+          action: 'check-updates',
+          createdById: user.id,
+        },
+      });
+
+      await audit(user, 'plugin.check-updates', 'instance', input.instanceId, {
+        updates: result.updates.length,
+      });
+      revalidatePath(`/admin/instances/${input.instanceId}`);
+
+      if (result.updates.length === 0) {
+        const count = result.upToDate.length;
+        return {
+          error: null,
+          taskId: null,
+          title: null,
+          message:
+            count === 0
+              ? 'No plugins installed.'
+              : `All ${count} installed plugin(s) match the catalog.`,
+        };
+      }
+
+      const lines = result.updates.map(
+        (item) =>
+          `${item.name}: ${item.installedVersion} → ${item.catalogVersion}`,
+      );
+      return {
+        error: null,
+        taskId: null,
+        title: null,
+        message: `Updates available:\n${lines.join('\n')}\nReinstall a plugin to apply its catalog version.`,
+      };
+    }
 
     const response = await hubFetch<{ taskId: string }>(
       `/internal/instances/${input.instanceId}/plugins`,
       {
         method: 'POST',
         body: {
-          pluginId: input.pluginId,
+          ...(input.pluginId ? { pluginId: input.pluginId } : {}),
           action: input.action,
           createdById: user.id,
         },
@@ -222,19 +284,34 @@ export async function pluginAction(
     );
 
     await audit(user, `plugin.${input.action}`, 'instance', input.instanceId, {
-      pluginId: input.pluginId,
+      ...(input.pluginId ? { pluginId: input.pluginId } : {}),
     });
 
     revalidatePath(`/admin/instances/${input.instanceId}`);
-    return { error: null, taskId: response.taskId };
+    const title =
+      input.action === 'remove-all'
+        ? 'Removing plugins'
+        : input.action === 'remove'
+          ? 'Removing plugin'
+          : 'Installing plugins';
+    return { error: null, taskId: response.taskId, message: null, title };
   } catch (error) {
     if (error instanceof ForbiddenError) {
-      return { error: 'You do not have permission to manage plugins.', taskId: null };
+      return {
+        error: 'You do not have permission to manage plugins.',
+        taskId: null,
+        message: null,
+        title: null,
+      };
     }
-    if (error instanceof HubError) return { error: error.message, taskId: null };
+    if (error instanceof HubError) {
+      return { error: error.message, taskId: null, message: null, title: null };
+    }
     return {
       error: error instanceof Error ? error.message : 'Unexpected error',
       taskId: null,
+      message: null,
+      title: null,
     };
   }
 }

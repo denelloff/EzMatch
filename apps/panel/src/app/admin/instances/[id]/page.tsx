@@ -138,8 +138,11 @@ export default async function InstancePage({
           title={
             liveTask.type === 'instance.reconfigure'
               ? 'Applying server settings'
-              : liveTask.type
+              : liveTask.type === 'plugin.install'
+                ? 'Installing plugins'
+                : liveTask.type
           }
+          onDone="refresh"
         />
       ) : null}
 

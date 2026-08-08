@@ -8,7 +8,7 @@ import type { HubConfig } from '../config.js';
 import { db } from '../db.js';
 import { mergeServerHostInfo } from '../host-info.js';
 import { logger } from '../logger.js';
-import { updateTask } from '../tasks.js';
+import { updateTask, isTerminalTaskStatus, isTaskCancelled } from '../tasks.js';
 import { matches } from '../match/runner.js';
 import { AgentConnection } from './connection.js';
 import { ingest } from './ingest.js';
@@ -203,7 +203,15 @@ async function handleMessage(
     case 'pong':
       break;
 
-    case 'taskProgress':
+    case 'taskProgress': {
+      if (isTaskCancelled(message.taskId)) break;
+
+      const current = await db().task.findUnique({
+        where: { id: message.taskId },
+        select: { status: true },
+      });
+      if (current && isTerminalTaskStatus(current.status)) break;
+
       // SteamCMD floods lines; persist milestones (percent set) only, but always
       // fan out to the live console over SSE.
       await updateTask(
@@ -217,17 +225,30 @@ async function handleMessage(
         { persist: message.percent != null },
       );
       break;
+    }
 
-    case 'taskResult':
+    case 'taskResult': {
+      // Hub orchestrators own SUCCEEDED via dispatch().settle. Writing it here
+      // made multi-step plugin installs flash "done" early and blocked cancel.
+      if (message.ok) break;
+      if (isTaskCancelled(message.taskId)) break;
+
+      const current = await db().task.findUnique({
+        where: { id: message.taskId },
+        select: { status: true },
+      });
+      if (current && isTerminalTaskStatus(current.status)) break;
+
       await updateTask(message.taskId, {
-        status: message.ok ? 'SUCCEEDED' : 'FAILED',
-        phase: message.ok ? 'done' : 'failed',
-        percent: message.ok ? 100 : null,
-        message: message.ok ? 'Completed' : (message.error ?? 'Failed'),
+        status: 'FAILED',
+        phase: 'failed',
+        percent: null,
+        message: message.error ?? 'Failed',
         error: message.error,
         result: message.data,
       });
       break;
+    }
 
     case 'consoleLine':
       ingest.console(message.instanceId, message.ts, message.line);

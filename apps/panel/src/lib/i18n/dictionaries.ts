@@ -232,7 +232,7 @@ const en = {
   serverUpdateAgent: 'Update agent',
   serverUpdateAgentTitle: 'Updating the agent',
   serverUpdateAgentConfirm:
-    'Pull the latest agent image and restart the agent container? No SSH needed.',
+    'Pull the latest agent image and restart the agent container? No SSH needed. The GHCR package must be Public (or the agent needs PPANEL_GHCR_TOKEN).',
   serverReinstallTitle: 'Reinstall agent',
   serverReinstallDescription:
     'Enter SSH credentials again. eZ-Match will re-run the install on this host (Docker, ez-agent image, token). Credentials are not stored.',
@@ -594,7 +594,7 @@ const ru: Dictionary = {
   serverUpdateAgent: 'Обновить агент',
   serverUpdateAgentTitle: 'Обновление агента',
   serverUpdateAgentConfirm:
-    'Скачать свежий образ агента и перезапустить контейнер? SSH не нужен.',
+    'Скачать свежий образ агента и перезапустить контейнер? SSH не нужен. Пакет GHCR должен быть Public (или на агенте нужен PPANEL_GHCR_TOKEN).',
   serverReinstallTitle: 'Переустановить агент',
   serverReinstallDescription:
     'Снова введите SSH-доступ. eZ-Match заново прогонит установку на этом хосте (Docker, образ ez-agent, токен). Учётные данные не сохраняются.',

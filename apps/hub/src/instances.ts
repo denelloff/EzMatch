@@ -1,11 +1,18 @@
 import { decryptSecret } from '@ppanel/db';
-import type { Command, Cs2Config, PluginSpec } from '@ppanel/protocol';
+import type { Command, Cs2Config, PluginId, PluginSpec } from '@ppanel/protocol';
 import { isPluginId, PLUGIN_CATALOG, pluginName, resolvePluginOrder } from '@ppanel/protocol';
 import { agents } from './agent/registry.js';
 import type { HubConfig } from './config.js';
 import { db } from './db.js';
 import { logger } from './logger.js';
-import { createTask, failTask, updateTask } from './tasks.js';
+import {
+  createTask,
+  failTask,
+  isTaskCancelled,
+  isTaskCancelledError,
+  TaskCancelledError,
+  updateTask,
+} from './tasks.js';
 
 export class InstanceNotFoundError extends Error {}
 
@@ -94,6 +101,7 @@ export async function runInstanceTask(input: {
       });
     })
     .catch(async (error: unknown) => {
+      if (isTaskCancelledError(error)) return;
       logger.error({ taskId, type: input.type, error }, 'instance task failed');
       await failTask(taskId, error);
     });
@@ -103,8 +111,9 @@ export async function runInstanceTask(input: {
 
 /**
  * Installs a plugin together with everything it depends on, in dependency
- * order, under a single task. Metamod has to be in place and the container
- * restarted before CounterStrikeSharp will load, so these cannot be parallel.
+ * order, under a single task. Dependencies already installed at the catalog
+ * version are skipped (e.g. Metamod stays put when installing CounterStrikeSharp).
+ * The explicitly requested plugin is always installed / reinstalled.
  */
 export async function installPluginTask(input: {
   serverId: string;
@@ -115,6 +124,19 @@ export async function installPluginTask(input: {
 }): Promise<string> {
   const specs = pluginSpecsFor([input.pluginId]);
   if (specs.length === 0) throw new Error(`Unknown plugin ${input.pluginId}`);
+
+  const installed = await db().pluginInstall.findMany({
+    where: { instanceId: input.instanceId, status: 'INSTALLED' },
+    select: { pluginId: true, version: true },
+  });
+  const installedVersion = new Map(
+    installed.map((row) => [row.pluginId, row.version]),
+  );
+
+  const specsToInstall = specs.filter((spec) => {
+    if (spec.id === input.pluginId) return true;
+    return installedVersion.get(spec.id) !== spec.version;
+  });
 
   const taskId = await createTask({
     serverId: input.serverId,
@@ -131,11 +153,41 @@ export async function installPluginTask(input: {
 
   void (async () => {
     try {
-      for (const [index, spec] of specs.entries()) {
+      const skipped = specs
+        .filter((spec) => !specsToInstall.some((item) => item.id === spec.id))
+        .map((spec) => pluginName(spec.id));
+      if (skipped.length > 0) {
         await updateTask(taskId, {
           status: 'RUNNING',
           phase: 'install',
-          percent: Math.round((index / specs.length) * 100),
+          percent: 0,
+          message: `Already installed — skipping ${skipped.join(', ')}`,
+        });
+      }
+
+      if (specsToInstall.length === 0) {
+        await updateTask(taskId, {
+          status: 'SUCCEEDED',
+          phase: 'done',
+          percent: 100,
+          message: 'Nothing to install',
+          error: null,
+        });
+        return;
+      }
+
+      for (const [index, spec] of specsToInstall.entries()) {
+        if (isTaskCancelled(taskId)) throw new TaskCancelledError();
+        const current = await db().task.findUnique({
+          where: { id: taskId },
+          select: { status: true },
+        });
+        if (current?.status === 'CANCELLED') throw new TaskCancelledError();
+
+        await updateTask(taskId, {
+          status: 'RUNNING',
+          phase: 'install',
+          percent: Math.round((index / specsToInstall.length) * 100),
           message: `Installing ${pluginName(spec.id)} ${spec.version}`,
         });
 
@@ -146,7 +198,10 @@ export async function installPluginTask(input: {
 
         await db().pluginInstall.upsert({
           where: {
-            instanceId_pluginId: { instanceId: input.instanceId, pluginId: spec.id },
+            instanceId_pluginId: {
+              instanceId: input.instanceId,
+              pluginId: spec.id,
+            },
           },
           create: {
             instanceId: input.instanceId,
@@ -173,10 +228,17 @@ export async function installPluginTask(input: {
         status: 'SUCCEEDED',
         phase: 'done',
         percent: 100,
-        message: `Installed ${specs.map((spec) => pluginName(spec.id)).join(', ')}`,
+        message: `Installed ${specsToInstall.map((spec) => pluginName(spec.id)).join(', ')}`,
         error: null,
       });
     } catch (error) {
+      if (isTaskCancelledError(error)) return;
+      const current = await db().task.findUnique({
+        where: { id: taskId },
+        select: { status: true },
+      });
+      if (current?.status === 'CANCELLED') return;
+
       const message = error instanceof Error ? error.message : String(error);
       await db().pluginInstall.updateMany({
         where: { instanceId: input.instanceId, pluginId: input.pluginId },
@@ -188,6 +250,152 @@ export async function installPluginTask(input: {
   })();
 
   return taskId;
+}
+
+/**
+ * Uninstalls every INSTALLED plugin in reverse dependency order (dependents
+ * first), so Metamod is removed last.
+ */
+export async function removeAllPluginsTask(input: {
+  serverId: string;
+  instanceId: string;
+  createdById: string | null;
+}): Promise<string> {
+  const installed = await db().pluginInstall.findMany({
+    where: { instanceId: input.instanceId, status: 'INSTALLED' },
+    select: { pluginId: true },
+  });
+  const ids = installed
+    .map((row) => row.pluginId)
+    .filter((id): id is PluginId => isPluginId(id));
+
+  const order = resolvePluginOrder(ids).reverse();
+  const specs = order.map((id) => PLUGIN_CATALOG[id]);
+
+  const taskId = await createTask({
+    serverId: input.serverId,
+    instanceId: input.instanceId,
+    type: 'plugin.remove-all',
+    createdById: input.createdById,
+    message: specs.length === 0 ? 'No plugins to remove' : 'Removing all plugins',
+  });
+
+  if (specs.length === 0) {
+    await updateTask(taskId, {
+      status: 'SUCCEEDED',
+      phase: 'done',
+      percent: 100,
+      message: 'No plugins to remove',
+      error: null,
+    });
+    return taskId;
+  }
+
+  const connection = agents.get(input.serverId);
+  if (!connection) {
+    await failTask(taskId, new Error('The agent for this server is not connected'));
+    return taskId;
+  }
+
+  void (async () => {
+    try {
+      for (const [index, spec] of specs.entries()) {
+        if (isTaskCancelled(taskId)) throw new TaskCancelledError();
+
+        await updateTask(taskId, {
+          status: 'RUNNING',
+          phase: 'remove',
+          percent: Math.round((index / specs.length) * 100),
+          message: `Removing ${pluginName(spec.id)}`,
+        });
+
+        await connection.dispatch(
+          {
+            type: 'plugin.remove',
+            instanceId: input.instanceId,
+            plugin: spec,
+          },
+          taskId,
+        );
+
+        await db().pluginInstall.updateMany({
+          where: { instanceId: input.instanceId, pluginId: spec.id },
+          data: { status: 'REMOVED', lastError: null },
+        });
+      }
+
+      await db().gameInstance.update({
+        where: { id: input.instanceId },
+        data: { pluginsOkBuildId: null },
+      });
+
+      await updateTask(taskId, {
+        status: 'SUCCEEDED',
+        phase: 'done',
+        percent: 100,
+        message: `Removed ${specs.map((spec) => pluginName(spec.id)).join(', ')}`,
+        error: null,
+      });
+    } catch (error) {
+      if (isTaskCancelledError(error)) return;
+      logger.error({ taskId, error }, 'remove all plugins failed');
+      await failTask(taskId, error);
+    }
+  })();
+
+  return taskId;
+}
+
+export interface PluginUpdateInfo {
+  pluginId: string;
+  name: string;
+  installedVersion: string;
+  catalogVersion: string;
+  updateAvailable: boolean;
+}
+
+/** Compares installed plugin versions to the pinned catalog. */
+export async function checkPluginUpdates(
+  instanceId: string,
+): Promise<{ updates: PluginUpdateInfo[]; upToDate: PluginUpdateInfo[] }> {
+  const installed = await db().pluginInstall.findMany({
+    where: { instanceId, status: { in: ['INSTALLED', 'NEEDS_RECHECK', 'FAILED'] } },
+    select: { pluginId: true, version: true },
+  });
+
+  const updates: PluginUpdateInfo[] = [];
+  const upToDate: PluginUpdateInfo[] = [];
+
+  for (const row of installed) {
+    if (!isPluginId(row.pluginId)) continue;
+    const catalog = PLUGIN_CATALOG[row.pluginId];
+    const info: PluginUpdateInfo = {
+      pluginId: row.pluginId,
+      name: pluginName(row.pluginId),
+      installedVersion: row.version,
+      catalogVersion: catalog.version,
+      updateAvailable: row.version !== catalog.version,
+    };
+    if (info.updateAvailable) {
+      updates.push(info);
+      await db().pluginInstall.updateMany({
+        where: { instanceId, pluginId: row.pluginId },
+        data: { status: 'NEEDS_RECHECK' },
+      });
+    } else {
+      upToDate.push(info);
+      await db().pluginInstall.updateMany({
+        where: {
+          instanceId,
+          pluginId: row.pluginId,
+          status: { in: ['NEEDS_RECHECK', 'INSTALLED'] },
+        },
+        data: { status: 'INSTALLED', lastError: null },
+      });
+    }
+  }
+
+  return { updates, upToDate };
 }
 
 export async function createInstanceTask(

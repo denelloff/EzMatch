@@ -8,7 +8,13 @@ import { resolveInstallPath } from './docker/paths.js';
 import { collectHostInfo, freeBytesFor } from './host.js';
 import type { LogServer } from './logs/server.js';
 import { log } from './logger.js';
-import { runInstallSteps, verifyPlugin, writeFakeRconPassword } from './plugins/installer.js';
+import { throwIfAborted, sleep } from './cancel.js';
+import {
+  fixAddonPermissions,
+  runInstallSteps,
+  verifyPlugin,
+  writeFakeRconPassword,
+} from './plugins/installer.js';
 import { scheduleAgentUpdate } from './self-update.js';
 
 /** 20 GiB: a CS2 patch is far smaller than the game, but never trivial. */
@@ -23,6 +29,7 @@ export interface CommandContext {
   instances: InstanceManager;
   logs: LogServer;
   progress: (phase: string, message: string, percent: number | null) => void;
+  signal?: AbortSignal;
 }
 
 export async function executeCommand(
@@ -77,21 +84,41 @@ export async function executeCommand(
       return result;
     }
 
-    case 'instance.start':
+    case 'instance.start': {
+      const startInstance = context.instances.get(command.instanceId);
+      try {
+        await fixAddonPermissions(startInstance.containerName);
+      } catch (error) {
+        log.warn('could not fix addon permissions before start', {
+          instanceId: command.instanceId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       await context.instances.start(command.instanceId);
       await applyLogSink(command.instanceId, 3, false, context);
       await enforceNoBotsIfConfigured(command.instanceId, context);
       return context.instances.snapshot(context.instances.get(command.instanceId));
+    }
 
     case 'instance.stop':
       await context.instances.stop(command.instanceId, command.timeoutSec);
       return context.instances.snapshot(context.instances.get(command.instanceId));
 
-    case 'instance.restart':
+    case 'instance.restart': {
+      const restartInstance = context.instances.get(command.instanceId);
+      try {
+        await fixAddonPermissions(restartInstance.containerName);
+      } catch (error) {
+        log.warn('could not fix addon permissions before restart', {
+          instanceId: command.instanceId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       await context.instances.restart(command.instanceId);
       await applyLogSink(command.instanceId, 3, false, context);
       await enforceNoBotsIfConfigured(command.instanceId, context);
       return context.instances.snapshot(context.instances.get(command.instanceId));
+    }
 
     case 'instance.remove':
       context.logs.unregister(command.instanceId);
@@ -204,6 +231,7 @@ export async function executeCommand(
         instance.containerName,
         command.plugin.uninstall,
         (message, percent) => context.progress('installing-plugins', message, percent),
+        context.signal,
       );
       return { removed: command.plugin.id };
     }
@@ -241,16 +269,21 @@ async function installPlugins(
   const instance = context.instances.get(instanceId);
 
   for (const plugin of plugins) {
+    throwIfAborted(context.signal);
     context.progress(
       'installing-plugins',
       `Installing ${plugin.id} ${plugin.version}`,
       null,
     );
-    await runInstallSteps(instance.containerName, plugin.install, (message, percent) =>
-      context.progress('installing-plugins', message, percent),
+    await runInstallSteps(
+      instance.containerName,
+      plugin.install,
+      (message, percent) => context.progress('installing-plugins', message, percent),
+      context.signal,
     );
 
     if (plugin.id === 'fake_rcon') {
+      throwIfAborted(context.signal);
       const password = await readContainerEnv(instance.containerName, 'CS2_RCONPW');
       if (!password) {
         throw new Error(
@@ -263,35 +296,45 @@ async function installPlugins(
         null,
       );
       await writeFakeRconPassword(instance.containerName, password);
+      await fixAddonPermissions(instance.containerName);
     }
   }
 
   // Plugins are loaded at map load, so nothing is verifiable until the server
   // has been through a restart.
+  throwIfAborted(context.signal);
+  try {
+    await fixAddonPermissions(instance.containerName);
+  } catch (error) {
+    log.warn('could not fix addon permissions before plugin restart', {
+      instanceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   context.progress('installing-plugins', 'Restarting to load the plugins', null);
   await context.instances.restart(instanceId);
 
   // CS2 + Metamod need wall-clock time after start before console answers.
   context.progress('verifying', 'Waiting for server console after restart', null);
-  await waitForConsoleReady(instance, 90_000);
+  await waitForConsoleReady(instance, 180_000, context.signal);
 
   for (const plugin of plugins) {
     if (!plugin.verifyCommand) continue;
+    throwIfAborted(context.signal);
     context.progress('verifying', `Checking ${plugin.id}`, null);
 
     const result = await verifyPluginWithRetry(
       plugin,
       (command, captureMs) =>
         instance.console.sendAndCapture([{ command, delayMs: 0 }], captureMs),
-      120_000,
+      180_000,
       (msg) => context.progress('verifying', msg, null),
+      context.signal,
+      () => instance.console.isContainerRunning(),
+      () => instance.console.start(),
     );
     if (!result.ok) {
-      throw new Error(
-        `${plugin.id} ${plugin.version} did not load. \`${plugin.verifyCommand}\` returned: ${
-          result.output.trim().slice(0, 500) || '(no output)'
-        }. This usually means the pinned build does not match the current CS2 version.`,
-      );
+      throw new Error(formatVerifyFailure(plugin, result.output));
     }
     log.info('plugin verified', { instanceId, plugin: plugin.id });
   }
@@ -330,26 +373,45 @@ async function enforceNoBotsIfConfigured(
   }
 }
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise((r) => setTimeout(r, ms));
-}
-
-/** After restart, wait until the console attach stream is usable. */
 async function waitForConsoleReady(
-  instance: { console: { start: () => Promise<void>; isAttached: boolean } },
+  instance: {
+    console: {
+      start: () => Promise<void>;
+      isAttached: boolean;
+      isContainerRunning: () => Promise<boolean>;
+    };
+  },
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    throwIfAborted(signal);
+    const running = await instance.console.isContainerRunning();
+    if (!running) {
+      await sleep(2_000, signal);
+      continue;
+    }
+
     await instance.console.start();
-    if (instance.console.isAttached) {
-      // Extra settle time so CS2 finishes early boot before we spam meta commands.
-      await sleep(8_000);
+    if (!instance.console.isAttached) {
+      await sleep(1_000, signal);
+      continue;
+    }
+
+    // Extra settle time so CS2 finishes early boot before we spam meta commands.
+    // Re-check afterwards: CSS/Metamod crash loops often die during this window.
+    await sleep(12_000, signal);
+    if (
+      (await instance.console.isContainerRunning()) &&
+      instance.console.isAttached
+    ) {
       return;
     }
-    await sleep(1_000);
   }
-  throw new Error('Console is not attached; the container may be stopped');
+  throw new Error(
+    'CS2 did not stay up long enough to verify plugins. Check the console for a crash loop (often CounterStrikeSharp permissions or a bad Metamod build), then Start the instance and retry.',
+  );
 }
 
 async function verifyPluginWithRetry(
@@ -357,12 +419,29 @@ async function verifyPluginWithRetry(
   runConsole: (command: string, captureMs: number) => Promise<string[]>,
   timeoutMs: number,
   onProgress: (message: string) => void,
+  signal?: AbortSignal,
+  isContainerRunning?: () => Promise<boolean>,
+  startConsole?: () => Promise<void>,
 ): Promise<{ ok: boolean; output: string }> {
   const deadline = Date.now() + timeoutMs;
   let last: { ok: boolean; output: string } = { ok: false, output: '' };
 
   while (Date.now() < deadline) {
+    throwIfAborted(signal);
+
+    if (isContainerRunning && !(await isContainerRunning())) {
+      last = {
+        ok: false,
+        output:
+          'CS2 container is not running (crash loop or still starting). Waiting…',
+      };
+      onProgress(last.output);
+      await sleep(3_000, signal);
+      continue;
+    }
+
     try {
+      await startConsole?.();
       last = await verifyPlugin(plugin, runConsole);
       if (last.ok) return last;
       onProgress(
@@ -375,10 +454,24 @@ async function verifyPluginWithRetry(
       };
       onProgress(`Console not ready yet for ${plugin.id}; retrying…`);
     }
-    await sleep(5_000);
+    await sleep(5_000, signal);
   }
 
   return last;
+}
+
+function formatVerifyFailure(plugin: PluginSpec, output: string): string {
+  const trimmed = output.trim().slice(0, 500) || '(no output)';
+  if (/container is not running|console is not attached|crash loop/i.test(trimmed)) {
+    return (
+      `${plugin.id} ${plugin.version} could not be verified because the CS2 server was not running. ` +
+      `Output: ${trimmed}`
+    );
+  }
+  return (
+    `${plugin.id} ${plugin.version} did not load. \`${plugin.verifyCommand}\` returned: ${trimmed}. ` +
+    `This usually means the pinned build does not match the current CS2 version.`
+  );
 }
 
 /**

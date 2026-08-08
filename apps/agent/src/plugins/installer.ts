@@ -6,6 +6,7 @@ import { docker, pullImage } from '../docker/client.js';
 import { putFiles, readTextFile, unpackArchive } from '../docker/archive.js';
 import { CS2_ROOT, resolveInstallPath } from '../docker/paths.js';
 import { log } from '../logger.js';
+import { CommandCancelledError, throwIfAborted } from '../cancel.js';
 
 /** Releases are tens of megabytes at most; anything larger is not a plugin. */
 const MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024;
@@ -19,13 +20,21 @@ export async function runInstallSteps(
   containerName: string,
   steps: InstallStep[],
   report: StepReporter,
+  signal?: AbortSignal,
 ): Promise<void> {
   const container = docker.getContainer(containerName);
 
   for (const [index, step] of steps.entries()) {
+    throwIfAborted(signal);
     const percent = Math.round(((index + 1) / steps.length) * 100);
-    await runStep(container, step, report, percent);
+    await runStep(container, step, report, percent, signal);
   }
+
+  // putArchive writes as root; CS2 runs as steam (uid 1000). CSS then fails to
+  // create configs/core.json, loops "CoreConfig file not found", and segfaults.
+  throwIfAborted(signal);
+  report('Fixing addon file ownership for steam', null);
+  await fixAddonPermissions(containerName);
 }
 
 async function runStep(
@@ -33,11 +42,13 @@ async function runStep(
   step: InstallStep,
   report: StepReporter,
   percent: number,
+  signal?: AbortSignal,
 ): Promise<void> {
   switch (step.kind) {
     case 'download-extract': {
       report(`Downloading ${step.url}`, percent);
-      const data = await download(step.url, step.sha256);
+      const data = await download(step.url, step.sha256, signal);
+      throwIfAborted(signal);
       report(`Unpacking into ${step.dest}`, percent);
       const entries = await unpackArchive(
         data,
@@ -97,13 +108,19 @@ async function runStep(
   }
 }
 
-async function download(url: string, expectedSha256: string | null): Promise<Buffer> {
+async function download(
+  url: string,
+  expectedSha256: string | null,
+  signal?: AbortSignal,
+): Promise<Buffer> {
   const parsed = new URL(url);
   if (parsed.protocol !== 'https:') {
     throw new Error(`Plugin downloads must use https, got ${parsed.protocol}`);
   }
 
   const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  signal?.addEventListener('abort', onAbort);
   const timeout = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
 
   try {
@@ -140,8 +157,15 @@ async function download(url: string, expectedSha256: string | null): Promise<Buf
     }
 
     return data;
+  } catch (error) {
+    if (signal?.aborted) throw new CommandCancelledError();
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Download timed out after ${DOWNLOAD_TIMEOUT_MS / 1000}s: ${url}`);
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', onAbort);
   }
 }
 
@@ -154,6 +178,35 @@ async function ensureDirectory(
   path: string,
 ): Promise<void> {
   await execInContainer(container, ['mkdir', '-p', '--', path]);
+}
+
+/** joedwards32/cs2 runs the dedicated server as user `steam` (uid/gid 1000). */
+const STEAM_UID_GID = '1000:1000';
+
+const ADDONS_DIR = `${CS2_ROOT}/game/csgo/addons`;
+const CSS_CONFIGS_DIR = `${ADDONS_DIR}/counterstrikesharp/configs`;
+const GAMEINFO_PATH = `${CS2_ROOT}/game/csgo/gameinfo.gi`;
+
+/**
+ * Ensures CounterStrikeSharp can write its config and that Metamod/CSS files
+ * are owned by the game process. Safe to call before every start/restart.
+ */
+export async function fixAddonPermissions(containerName: string): Promise<void> {
+  const container = docker.getContainer(containerName);
+  await execInContainer(container, [
+    'sh',
+    '-c',
+    [
+      `if [ -d "${ADDONS_DIR}" ]; then`,
+      // Seed core.json so CSS does not need to create it on first boot.
+      `  if [ -f "${CSS_CONFIGS_DIR}/core.example.json" ] && [ ! -f "${CSS_CONFIGS_DIR}/core.json" ]; then`,
+      `    cp "${CSS_CONFIGS_DIR}/core.example.json" "${CSS_CONFIGS_DIR}/core.json";`,
+      `  fi;`,
+      `  chown -R ${STEAM_UID_GID} "${ADDONS_DIR}";`,
+      `fi`,
+      `if [ -f "${GAMEINFO_PATH}" ]; then chown ${STEAM_UID_GID} "${GAMEINFO_PATH}"; fi`,
+    ].join('\n'),
+  ]);
 }
 
 /**

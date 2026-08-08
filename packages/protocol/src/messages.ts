@@ -17,6 +17,7 @@ export const zTaskPhase = z.enum([
   'verifying',
   'done',
   'failed',
+  'cancelled',
 ]);
 export type TaskPhase = z.infer<typeof zTaskPhase>;
 
@@ -111,6 +112,10 @@ export const zHubMessage = z.discriminatedUnion('type', [
     type: z.literal('command'),
     taskId: zId,
     command: zCommand,
+  }),
+  z.object({
+    type: z.literal('cancel'),
+    taskId: zId,
   }),
   z.object({
     type: z.literal('error'),

@@ -76,4 +76,7 @@ jobs:
               "/orgs/${OWNER}/packages/container/${PKG}/visibility" \
               -f visibility=public \
             || echo "Could not set visibility automatically — open https://github.com/users/${OWNER}/packages/container/${PKG}/settings and set Public."
-          echo "Pull with: docker pull ghcr.io/${OWNER_LC}/${PKG}:0.1.0"
+          echo "Pull with: docker pull ghcr.io/${OWNER_LC}/${PKG}:latest"
+          echo "If pulls fail with unauthorized, open:"
+          echo "  https://github.com/users/${OWNER}/packages/container/package/${PKG}/settings"
+          echo "and set visibility to Public."

@@ -5,11 +5,13 @@ import { agents, AgentOfflineError } from '../agent/registry.js';
 import type { HubConfig } from '../config.js';
 import { db } from '../db.js';
 import {
+  checkPluginUpdates,
   createInstanceTask,
   installPluginTask,
   InstanceNotFoundError,
   loadCs2Config,
   pluginSpecsFor,
+  removeAllPluginsTask,
   runInstanceTask,
 } from '../instances.js';
 
@@ -40,11 +42,26 @@ const consoleBody = z.object({
   captureMs: z.number().int().min(0).max(30_000).optional(),
 });
 
-const pluginBody = z.object({
-  pluginId: z.string().min(1).max(64),
-  action: z.enum(['install', 'remove']),
-  createdById: z.string().max(64).nullable().optional(),
-});
+const pluginBody = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('install'),
+    pluginId: z.string().min(1).max(64),
+    createdById: z.string().max(64).nullable().optional(),
+  }),
+  z.object({
+    action: z.literal('remove'),
+    pluginId: z.string().min(1).max(64),
+    createdById: z.string().max(64).nullable().optional(),
+  }),
+  z.object({
+    action: z.literal('remove-all'),
+    createdById: z.string().max(64).nullable().optional(),
+  }),
+  z.object({
+    action: z.literal('check-updates'),
+    createdById: z.string().max(64).nullable().optional(),
+  }),
+]);
 
 export function registerInstanceRoutes(app: HubApp, config: HubConfig): void {
   app.post<{ Params: { instanceId: string } }>(
@@ -183,11 +200,24 @@ export function registerInstanceRoutes(app: HubApp, config: HubConfig): void {
       const instance = await db().gameInstance.findUnique({ where: { id: instanceId } });
       if (!instance) return reply.code(404).send({ error: 'not_found' });
 
-      if (!isPluginId(body.pluginId)) {
-        return reply.code(400).send({ error: 'unknown_plugin' });
+      if (body.action === 'check-updates') {
+        const result = await checkPluginUpdates(instanceId);
+        return reply.send(result);
+      }
+
+      if (body.action === 'remove-all') {
+        const taskId = await removeAllPluginsTask({
+          serverId: instance.serverId,
+          instanceId,
+          createdById: body.createdById ?? null,
+        });
+        return reply.send({ taskId });
       }
 
       if (body.action === 'install') {
+        if (!isPluginId(body.pluginId)) {
+          return reply.code(400).send({ error: 'unknown_plugin' });
+        }
         const taskId = await installPluginTask({
           serverId: instance.serverId,
           instanceId,
@@ -200,6 +230,9 @@ export function registerInstanceRoutes(app: HubApp, config: HubConfig): void {
 
       // Removal touches only the requested plugin: whatever it depends on may
       // still be carrying another plugin.
+      if (!isPluginId(body.pluginId)) {
+        return reply.code(400).send({ error: 'unknown_plugin' });
+      }
       const [spec] = pluginSpecsFor([body.pluginId]).filter(
         (candidate) => candidate.id === body.pluginId,
       );

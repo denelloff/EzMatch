@@ -33,6 +33,32 @@ function quoted(value: string): string {
   return `"${value.replace(/["\\;\n\r]/g, '')}"`;
 }
 
+const MATCH_CHAT_BRAND = '[EZ-MATCH]';
+
+/**
+ * Server chat line for match announcements.
+ *
+ * With ez_csay installed, console `say` is rewritten as a colored
+ * `[EZ-MATCH] …` line. Without it, players still see the plain branded text.
+ */
+export function matchSay(message: string): string {
+  // Strip {color} tags for plain `say` fallback; ez_csay still colors the brand.
+  const body = message
+    .replace(/["\\;\n\r]/g, '')
+    .replace(/\{[a-zA-Z]+\}/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!body) return `say ${quoted(MATCH_CHAT_BRAND)}`;
+  if (body.toUpperCase().startsWith(MATCH_CHAT_BRAND)) {
+    return `say ${quoted(body)}`;
+  }
+  return `say ${quoted(`${MATCH_CHAT_BRAND} ${body}`)}`;
+}
+
+export function sayCommands(message: string): ConsoleCommand[] {
+  return [cmd(matchSay(message))];
+}
+
 /**
  * Applied once when the match is created. Ends with the map change, so
  * everything after this runs on a freshly loaded map.
@@ -89,6 +115,7 @@ export function warmupCommands(settings: MatchSettings): ConsoleCommand[] {
     cmd('mp_backup_round_auto 1'),
     cmd(`mp_backup_round_file ${quoted(settings.backupPrefix)}`),
     cmd(`sv_password ${quoted(settings.joinPassword)}`),
+    cmd(matchSay('Warmup — waiting for teams'), 500),
   ];
 }
 
@@ -116,6 +143,7 @@ export function knifeCommands(): ConsoleCommand[] {
     cmd('mp_roundtime 1.92'),
     cmd('mp_roundtime_defuse 1.92'),
     cmd('mp_maxrounds 1'),
+    cmd(matchSay('Knife round'), 500),
     cmd('mp_warmup_end', 1000),
     cmd('mp_restartgame 1'),
   ];
@@ -149,7 +177,7 @@ export function liveCommands(settings: MatchSettings): ConsoleCommand[] {
     // Three restarts: the first two clear scores and inventories, the third is
     // what players see as "LIVE". Fewer restarts leaves knife-round money.
     cmd('mp_restartgame 3', 4000),
-    cmd(`say ${quoted(`${settings.team1Name} vs ${settings.team2Name} — LIVE`)}`),
+    cmd(matchSay(`${settings.team1Name} vs ${settings.team2Name} — LIVE`)),
   ];
 }
 
@@ -176,10 +204,6 @@ export function pauseCommands(): ConsoleCommand[] {
 
 export function unpauseCommands(): ConsoleCommand[] {
   return [cmd('mp_unpause_match')];
-}
-
-export function sayCommands(message: string): ConsoleCommand[] {
-  return [cmd(`say ${quoted(message)}`)];
 }
 
 export function listBackupsCommands(): ConsoleCommand[] {

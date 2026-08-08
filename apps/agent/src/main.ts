@@ -68,11 +68,12 @@ async function main(): Promise<void> {
         ...network,
       };
     },
-    onCommand: (taskId, command) =>
+    onCommand: (taskId, command, signal) =>
       executeCommand(command, {
         config,
         instances,
         logs,
+        signal,
         progress: (phase, message, percent) => {
           hub.progress(taskId, phase as never, message, percent);
         },

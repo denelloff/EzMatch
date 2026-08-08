@@ -1,10 +1,16 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { Badge, Notice } from '@/components/ui';
+import { useEffect, useRef, useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
+import { usePathname, useRouter } from 'next/navigation';
+import { Badge, Notice, secondaryButtonClass } from '@/components/ui';
 import { useProgressEta } from '@/hooks/use-progress-eta';
 import { useTaskStream } from '@/hooks/use-task-stream';
 import { formatEta } from '@/lib/format';
+import {
+  cancelTaskAction,
+  type CancelTaskState,
+} from '@/app/admin/tasks/actions';
 
 export function TaskProgress({
   taskId,
@@ -14,6 +20,8 @@ export function TaskProgress({
   waitingLabel = 'Waiting for install output…',
   etaLeftLabel = '~{eta} left',
   etaWaitLabel = 'Estimating time…',
+  cancelLabel = 'Cancel',
+  canCancel = true,
 }: {
   taskId: string;
   title: string;
@@ -22,15 +30,30 @@ export function TaskProgress({
   waitingLabel?: string;
   etaLeftLabel?: string;
   etaWaitLabel?: string;
+  cancelLabel?: string;
+  canCancel?: boolean;
 }) {
   const { update, log } = useTaskStream(taskId, onDone);
   const logRef = useRef<HTMLPreElement>(null);
+  const [cancelState, cancelFormAction] = useActionState<CancelTaskState, FormData>(
+    cancelTaskAction,
+    { error: null, cancelled: null },
+  );
+  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     const el = logRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [log]);
+
+  useEffect(() => {
+    if (cancelState.cancelled) {
+      router.replace(pathname);
+      router.refresh();
+    }
+  }, [cancelState.cancelled, router, pathname]);
 
   const status = update?.status ?? 'QUEUED';
   const percent = update?.percent ?? null;
@@ -45,7 +68,7 @@ export function TaskProgress({
   const tone =
     status === 'SUCCEEDED'
       ? 'ok'
-      : status === 'FAILED' || status === 'TIMED_OUT'
+      : status === 'FAILED' || status === 'TIMED_OUT' || status === 'CANCELLED'
         ? 'danger'
         : 'info';
 
@@ -60,14 +83,22 @@ export function TaskProgress({
 
   return (
     <div className="rounded-2xl border border-ink-700/80 bg-ink-900/85">
-      <div className="flex items-center justify-between border-b border-ink-700/80 px-5 py-3">
-        <div>
+      <div className="flex items-center justify-between gap-3 border-b border-ink-700/80 px-5 py-3">
+        <div className="min-w-0">
           <h2 className="text-sm font-medium text-ink-100">{title}</h2>
           <p className="mt-0.5 text-xs text-ink-400">
             {update?.phase ?? 'queued'}
           </p>
         </div>
-        <Badge tone={tone}>{status.toLowerCase()}</Badge>
+        <div className="flex shrink-0 items-center gap-2">
+          {canCancel && running ? (
+            <form action={cancelFormAction}>
+              <input type="hidden" name="taskId" value={taskId} />
+              <CancelButton label={cancelLabel} />
+            </form>
+          ) : null}
+          <Badge tone={tone}>{status.toLowerCase()}</Badge>
+        </div>
       </div>
 
       <div className="px-5 py-4">
@@ -93,6 +124,12 @@ export function TaskProgress({
           />
         </div>
 
+        {cancelState.error ? (
+          <Notice tone="danger" className="mt-3">
+            {cancelState.error}
+          </Notice>
+        ) : null}
+
         {update?.error ? (
           <Notice tone="danger" className="mt-3">
             {update.error}
@@ -111,5 +148,14 @@ export function TaskProgress({
         )}
       </div>
     </div>
+  );
+}
+
+function CancelButton({ label }: { label: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" className={secondaryButtonClass} disabled={pending}>
+      {pending ? 'Cancelling…' : label}
+    </button>
   );
 }

@@ -21,6 +21,10 @@ const GAME_DIR = 'game/csgo';
 export const METAMOD_BUILD = '2.0.0-git1410';
 export const COUNTERSTRIKESHARP_VERSION = '1.0.371';
 export const FAKE_RCON_VERSION = '1.2.8';
+export const EZ_CSAY_VERSION = '0.1.0';
+/** SHA-256 of plugins/ez-csay/dist/EzCSay.zip */
+export const EZ_CSAY_ZIP_SHA256 =
+  '9a7bbeae178800be02a82cef496f0ecdd88140ca4f55874574119db80960d00a';
 
 export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
   metamod: {
@@ -73,6 +77,16 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
         dest: GAME_DIR,
         stripComponents: 0,
       },
+      {
+        // CSS segfaults in a "CoreConfig file not found, creating…" loop when it
+        // cannot write core.json (putArchive owns files as root; CS2 runs as
+        // steam). Pre-seed the file so first boot does not need to create it.
+        kind: 'write-file',
+        file: `${GAME_DIR}/addons/counterstrikesharp/configs/core.json`,
+        contentBase64:
+          'ewogICAgIlB1YmxpY0NoYXRUcmlnZ2VyIjogWyAiISIgXSwKICAgICJTaWxlbnRDaGF0VHJpZ2dlciI6IFsgIi8iIF0sCiAgICAiRm9sbG93Q1MyU2VydmVyR3VpZGVsaW5lcyI6IHRydWUsCiAgICAiUGx1Z2luSG90UmVsb2FkRW5hYmxlZCI6IHRydWUsCiAgICAiUGx1Z2luQXV0b0xvYWRFbmFibGVkIjogdHJ1ZSwKICAgICJQbHVnaW5SZXNvbHZlTnVnZXRQYWNrYWdlcyI6IGZhbHNlLAogICAgIlNlcnZlckxhbmd1YWdlIjogImVuIiwKICAgICJVbmxvY2tDb25Db21tYW5kcyI6IHRydWUsCiAgICAiVW5sb2NrQ29uVmFycyI6IHRydWUsCiAgICAiQXV0b1VwZGF0ZUVuYWJsZWQiOiB0cnVlLAogICAgIkF1dG9VcGRhdGVVUkwiOiAiaHR0cDovL2dhbWVkYXRhLmNzc2hhcnAuZGV2IiwKICAgICJNYXhpbXVtRnJhbWVUYXNrc0V4ZWN1dGVkUGVyVGljayI6IDEwMjQKfQo=',
+        skipIfExists: true,
+      },
     ],
     uninstall: [
       { kind: 'remove-path', path: `${GAME_DIR}/addons/counterstrikesharp` },
@@ -109,6 +123,35 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
     ],
     verifyCommand: 'meta list',
     verifyExpect: 'fake_rcon',
+  },
+
+  ez_csay: {
+    id: 'ez_csay',
+    version: EZ_CSAY_VERSION,
+    requires: ['counterstrikesharp'],
+    install: [
+      {
+        kind: 'ensure-dir',
+        path: `${GAME_DIR}/addons/counterstrikesharp/plugins/EzCSay`,
+      },
+      {
+        // Checked-in zip from plugins/ez-csay/dist (also published as ez-csay-v* releases).
+        kind: 'download-extract',
+        url: `https://github.com/denelloff/PMatch/raw/publish-agent/plugins/ez-csay/dist/EzCSay.zip`,
+        archive: 'zip',
+        sha256: EZ_CSAY_ZIP_SHA256,
+        dest: `${GAME_DIR}/addons/counterstrikesharp/plugins/EzCSay`,
+        stripComponents: 0,
+      },
+    ],
+    uninstall: [
+      {
+        kind: 'remove-path',
+        path: `${GAME_DIR}/addons/counterstrikesharp/plugins/EzCSay`,
+      },
+    ],
+    verifyCommand: null,
+    verifyExpect: null,
   },
 };
 
@@ -152,6 +195,16 @@ export const PLUGIN_DESCRIPTIONS: PluginCatalogEntry[] = [
     caution:
       'Uses the same password as RCON (rcon_password). eZ-Match itself drives the server through the container console and does not need this plugin.',
     requires: ['metamod'],
+  },
+  {
+    id: 'ez_csay',
+    name: 'eZ-Match CSay',
+    version: EZ_CSAY_VERSION,
+    summary:
+      'Branded [EZ-MATCH] chat from the server console, with optional {green}/{yellow} color tags (csay / ezsay).',
+    caution:
+      'Requires CounterStrikeSharp. After a CS2/CSS update it may need a rebuild — plain say still works without it.',
+    requires: ['counterstrikesharp'],
   },
 ];
 

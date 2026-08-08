@@ -12,7 +12,7 @@ export interface TaskUpdate {
   error?: string | null;
 }
 
-const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT']);
+const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED']);
 
 export function useTaskStream(
   taskId: string,
@@ -43,7 +43,12 @@ export function useTaskStream(
     setLive(true);
 
     const apply = (data: TaskUpdate) => {
-      setUpdate((previous) => ({ ...previous, ...data }));
+      if (finished.current) return;
+
+      setUpdate((previous) => {
+        if (previous?.status && TERMINAL.has(previous.status)) return previous;
+        return { ...previous, ...data, taskId };
+      });
 
       if (data.message) {
         setLog((lines) => {
