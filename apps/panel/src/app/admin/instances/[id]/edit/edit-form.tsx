@@ -15,24 +15,13 @@ import {
   secondaryButtonClass,
   selectClass,
 } from '@/components/ui';
+import type { MapOption } from '@/lib/maps';
 import { editInstanceAction, type EditInstanceState } from './actions';
 
 const GAME_MODES = [
   { value: 1, label: 'Competitive (5v5)' },
   { value: 2, label: 'Wingman (2v2)' },
   { value: 0, label: 'Casual' },
-];
-
-const MAPS = [
-  'de_dust2',
-  'de_mirage',
-  'de_inferno',
-  'de_nuke',
-  'de_ancient',
-  'de_anubis',
-  'de_vertigo',
-  'de_overpass',
-  'de_train',
 ];
 
 export interface EditDefaults {
@@ -50,9 +39,11 @@ export interface EditDefaults {
 export function EditInstanceForm({
   instanceId,
   defaults,
+  maps,
 }: {
   instanceId: string;
   defaults: EditDefaults;
+  maps: MapOption[];
 }) {
   const [state, formAction] = useActionState<EditInstanceState, FormData>(
     editInstanceAction,
@@ -71,7 +62,7 @@ export function EditInstanceForm({
           description="Saving recreates the container with new environment variables (game files stay on the volume). The server will restart."
         />
         <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
-          <Field label="Instance name" hint="Shown in PMatch only.">
+          <Field label="Instance name" hint="Shown in eZ-Match only.">
             <input
               name="name"
               required
@@ -172,17 +163,28 @@ export function EditInstanceForm({
           </Field>
 
           <Field label="Starting map">
-            <input
+            <select
               name="startMap"
-              list="ppanel-maps-edit"
-              defaultValue={defaults.startMap}
-              className={inputClass}
-            />
-            <datalist id="ppanel-maps-edit">
-              {MAPS.map((map) => (
-                <option key={map} value={map} />
+              className={selectClass}
+              defaultValue={
+                maps.some((map) => map.name === defaults.startMap)
+                  ? defaults.startMap
+                  : maps[0]?.name ?? defaults.startMap
+              }
+              required
+            >
+              {!maps.some((map) => map.name === defaults.startMap) &&
+              defaults.startMap ? (
+                <option value={defaults.startMap}>
+                  {defaults.startMap}
+                </option>
+              ) : null}
+              {maps.map((map) => (
+                <option key={map.name} value={map.name}>
+                  {map.label} ({map.name})
+                </option>
               ))}
-            </datalist>
+            </select>
           </Field>
 
           <Field label="Slots">

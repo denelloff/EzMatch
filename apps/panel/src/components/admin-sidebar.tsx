@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { PMatchLogo } from '@/components/pmatch-logo';
+import { EzMatchLogo } from '@/components/pmatch-logo';
 
 export interface AdminNavItem {
   href: string;
@@ -70,7 +70,7 @@ export function AdminSidebar({
         }}
       />
       <div className="relative border-b border-ink-700/80 px-4 py-4">
-        <PMatchLogo href="/admin" subtitle="Admin" size="sm" />
+        <EzMatchLogo href="/admin" subtitle="Admin" size="sm" />
       </div>
 
       <nav className="relative flex-1 space-y-5 overflow-y-auto px-2.5 py-4">

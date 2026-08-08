@@ -1,5 +1,5 @@
 # Built from the repository root:
-#   docker build -f apps/agent/Dockerfile -t ghcr.io/denelloff/ppanel-agent:0.1.0 .
+#   docker build -f apps/agent/Dockerfile -t ghcr.io/denelloff/ez-agent:0.1.0 .
 FROM node:24-alpine AS build
 
 RUN corepack enable

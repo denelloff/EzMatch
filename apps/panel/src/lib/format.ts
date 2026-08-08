@@ -51,3 +51,16 @@ export function formatDuration(ms: number): string {
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
 }
+
+/** Short remaining-time label for progress ETAs (rounds up to whole minutes when ≥ 60s). */
+export function formatEta(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '—';
+  if (ms < 5_000) return '< 5s';
+  const totalSeconds = Math.ceil(ms / 1000);
+  if (totalSeconds < 60) return `~${totalSeconds}s`;
+  const minutes = Math.ceil(totalSeconds / 60);
+  if (minutes < 60) return `~${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  return rem > 0 ? `~${hours}h ${rem}m` : `~${hours}h`;
+}

@@ -1,6 +1,6 @@
 import 'server-only';
 
-const HUB_URL = process.env.HUB_INTERNAL_URL ?? 'http://127.0.0.1:4000';
+const HUB_URL = process.env.HUB_INTERNAL_URL ?? 'http://pm.denello.ru:4000';
 const INTERNAL_TOKEN = process.env.HUB_INTERNAL_TOKEN ?? '';
 
 export class HubError extends Error {
@@ -97,9 +97,14 @@ export async function hubStream(
     return new Response('stream unavailable', { status: 502 });
   }
 
-  return new Response(response.body, {
+  // Re-encode through a TransformStream so chunks are forwarded immediately
+  // rather than held in an opaque upstream body behind a proxy.
+  const { readable, writable } = new TransformStream();
+  void response.body.pipeTo(writable, { signal }).catch(() => undefined);
+
+  return new Response(readable, {
     headers: {
-      'Content-Type': 'text/event-stream',
+      'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',

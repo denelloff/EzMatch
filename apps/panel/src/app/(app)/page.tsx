@@ -1,41 +1,20 @@
 import Link from 'next/link';
-import { hasRole, requireUser } from '@/lib/auth';
-import { prisma } from '@/lib/db';
+import { requireUser } from '@/lib/auth';
 import { loadMatchRows } from '@/lib/matches';
 import { LIVE_MATCH_STATES } from '@/lib/match-state';
 import { getT } from '@/lib/i18n';
 import { MatchTable } from '@/components/match-table';
-import { Card, CardHeader, chipClass } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
+/** Public home: live scoreboard list only — no match/server management. */
 export default async function HomePage() {
-  const user = await requireUser();
+  await requireUser();
   const t = await getT();
-  const isAdmin = hasRole(user, 'ADMIN');
 
-  const [rows, running] = await Promise.all([
-    loadMatchRows({ state: { in: ['DRAFT', ...LIVE_MATCH_STATES] } }),
-    isAdmin
-      ? prisma.gameInstance.findMany({
-          where: { state: 'RUNNING' },
-          orderBy: { name: 'asc' },
-          select: {
-            id: true,
-            name: true,
-            startMap: true,
-            server: { select: { name: true } },
-            matches: {
-              where: { state: { in: [...LIVE_MATCH_STATES] } },
-              select: { id: true },
-              take: 1,
-            },
-          },
-        })
-      : Promise.resolve([]),
-  ]);
-
-  const idle = running.filter((instance) => instance.matches.length === 0);
+  const rows = await loadMatchRows({
+    state: { in: [...LIVE_MATCH_STATES] },
+  });
 
   return (
     <div className="space-y-6">
@@ -72,27 +51,6 @@ export default async function HomePage() {
           colStatus: t.colStatus,
         }}
       />
-
-      {isAdmin && idle.length > 0 ? (
-        <Card>
-          <CardHeader
-            title={t.homeFreeServers}
-            description={t.homeFreeServersDescription}
-          />
-          <div className="flex flex-wrap gap-2 px-5 py-4">
-            {idle.map((instance) => (
-              <Link
-                key={instance.id}
-                href={`/admin/instances/${instance.id}/matches/new`}
-                className={chipClass}
-              >
-                {instance.server.name} · {instance.name}
-                <span className="ml-2 text-ink-400">{instance.startMap}</span>
-              </Link>
-            ))}
-          </div>
-        </Card>
-      ) : null}
     </div>
   );
 }

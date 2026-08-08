@@ -134,6 +134,6 @@ body {
   }
 }
 
-.pmatch-enter {
+.ezmatch-enter {
   animation: pmatch-fade-up 320ms ease-out both;
 }

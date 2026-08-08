@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { PluginCatalogEntry } from '@ppanel/protocol';
+import type { MapOption } from '@/lib/maps';
 import {
   Card,
   CardHeader,
@@ -24,28 +25,18 @@ const GAME_MODES = [
   { value: 0, label: 'Casual' },
 ];
 
-const MAPS = [
-  'de_dust2',
-  'de_mirage',
-  'de_inferno',
-  'de_nuke',
-  'de_ancient',
-  'de_anubis',
-  'de_vertigo',
-  'de_overpass',
-  'de_train',
-];
-
 export function InstanceForm({
   serverId,
   serverName,
   plugins,
   freeBytes,
+  maps,
 }: {
   serverId: string;
   serverName: string;
   plugins: PluginCatalogEntry[];
   freeBytes: number | null;
+  maps: MapOption[];
 }) {
   const [state, formAction] = useActionState<NewInstanceState, FormData>(
     createInstanceAction,
@@ -77,7 +68,7 @@ export function InstanceForm({
           description={`Installs into a new Docker container on ${serverName}.`}
         />
         <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
-          <Field label="Instance name" hint="Shown in PMatch only.">
+          <Field label="Instance name" hint="Shown in eZ-Match only.">
             <input
               name="name"
               required
@@ -92,7 +83,7 @@ export function InstanceForm({
               name="serverTitle"
               required
               maxLength={64}
-              defaultValue="PMatch CS2"
+              defaultValue="eZ-Match CS2"
               className={inputClass}
             />
           </Field>
@@ -161,17 +152,22 @@ export function InstanceForm({
           </Field>
 
           <Field label="Starting map">
-            <input
+            <select
               name="startMap"
-              list="ppanel-maps"
-              defaultValue="de_dust2"
-              className={inputClass}
-            />
-            <datalist id="ppanel-maps">
-              {MAPS.map((map) => (
-                <option key={map} value={map} />
+              className={selectClass}
+              defaultValue={
+                maps.find((map) => map.name === 'de_dust2')?.name ??
+                maps[0]?.name ??
+                'de_dust2'
+              }
+              required
+            >
+              {maps.map((map) => (
+                <option key={map.name} value={map.name}>
+                  {map.label} ({map.name})
+                </option>
               ))}
-            </datalist>
+            </select>
           </Field>
 
           <Field label="Slots">
@@ -228,7 +224,7 @@ export function InstanceForm({
       <Card>
         <CardHeader
           title="Plugins"
-          description="Optional. Versions are pinned; PMatch never resolves “latest”."
+          description="Optional. Versions are pinned; eZ-Match never resolves “latest”."
         />
         <ul className="divide-y divide-ink-700">
           {plugins.map((plugin) => {

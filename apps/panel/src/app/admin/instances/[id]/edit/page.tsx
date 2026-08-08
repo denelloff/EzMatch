@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { hasRole, requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { listEnabledMaps } from '@/lib/maps';
 import { EditInstanceForm } from './edit-form';
 
 export const dynamic = 'force-dynamic';
@@ -15,12 +16,15 @@ export default async function EditInstancePage({
   if (!hasRole(user, 'ADMIN')) notFound();
 
   const { id } = await params;
-  const instance = await prisma.gameInstance.findUnique({
-    where: { id },
-    include: {
-      server: { select: { id: true, name: true } },
-    },
-  });
+  const [instance, maps] = await Promise.all([
+    prisma.gameInstance.findUnique({
+      where: { id },
+      include: {
+        server: { select: { id: true, name: true } },
+      },
+    }),
+    listEnabledMaps(),
+  ]);
   if (!instance || instance.state === 'REMOVED') notFound();
 
   return (
@@ -40,6 +44,7 @@ export default async function EditInstancePage({
 
       <EditInstanceForm
         instanceId={instance.id}
+        maps={maps}
         defaults={{
           name: instance.name,
           serverTitle: instance.serverTitle,

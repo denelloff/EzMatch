@@ -7,6 +7,7 @@ import { formatRelative } from '@/lib/format';
 import { getT } from '@/lib/i18n';
 import { Badge, Card, CardHeader, Notice, buttonClass } from '@/components/ui';
 import { EventFeed, type FeedEvent } from '@/components/event-feed';
+import { TaskProgress } from '@/components/task-progress';
 import { ConsoleView } from './console-view';
 import { InstanceControls } from './instance-controls';
 import { PluginPanel } from './plugin-panel';
@@ -22,12 +23,15 @@ const STATE_TONE = {
 
 export default async function InstancePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ task?: string }>;
 }) {
   const user = await requireUser();
   const t = await getT();
   const { id } = await params;
+  const { task: taskId } = await searchParams;
 
   const instance = await prisma.gameInstance.findUnique({
     where: { id },
@@ -36,6 +40,13 @@ export default async function InstancePage({
       plugins: true,
       matches: {
         where: { state: { notIn: ['FINISHED', 'CANCELLED'] } },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+      tasks: {
+        where: taskId
+          ? { id: taskId }
+          : { status: { in: ['QUEUED', 'RUNNING'] } },
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -53,6 +64,10 @@ export default async function InstancePage({
   const canAdmin = hasRole(user, 'ADMIN');
   const running = instance.state === 'RUNNING';
   const address = `${instance.server.publicIp ?? instance.server.host}:${instance.gamePort}`;
+  const liveTask = instance.tasks[0] ?? null;
+  const showTask =
+    liveTask &&
+    (liveTask.status === 'QUEUED' || liveTask.status === 'RUNNING');
 
   const initialEvents: FeedEvent[] = recent.map((row) => ({
     ts: row.ts.toISOString(),
@@ -95,7 +110,7 @@ export default async function InstancePage({
         <div className="flex flex-wrap items-center gap-2">
           {instance.matches[0] ? (
             <Link
-              href={`/matches/${instance.matches[0].id}`}
+              href={`/admin/matches/${instance.matches[0].id}`}
               className="rounded-lg border border-brand-500/40 bg-brand-500/10 px-3.5 py-2 text-sm text-brand-500"
             >
               Match in progress: {instance.matches[0].title}
@@ -114,6 +129,18 @@ export default async function InstancePage({
 
       {instance.lastError ? (
         <Notice tone="danger">{instance.lastError}</Notice>
+      ) : null}
+
+      {showTask && liveTask ? (
+        <TaskProgress
+          key={liveTask.id}
+          taskId={liveTask.id}
+          title={
+            liveTask.type === 'instance.reconfigure'
+              ? 'Applying server settings'
+              : liveTask.type
+          }
+        />
       ) : null}
 
       <Card>

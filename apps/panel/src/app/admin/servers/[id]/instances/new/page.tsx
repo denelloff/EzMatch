@@ -4,6 +4,7 @@ import { PLUGIN_DESCRIPTIONS, type HostInfo } from '@ppanel/protocol';
 import { assertRole } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getT } from '@/lib/i18n';
+import { listEnabledMaps } from '@/lib/maps';
 import { InstanceForm } from './instance-form';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,10 @@ export default async function NewInstancePage({
   const t = await getT();
   const { id } = await params;
 
-  const server = await prisma.server.findUnique({ where: { id } });
+  const [server, maps] = await Promise.all([
+    prisma.server.findUnique({ where: { id } }),
+    listEnabledMaps(),
+  ]);
   if (!server) notFound();
 
   if (server.status !== 'ONLINE') {
@@ -54,6 +58,7 @@ export default async function NewInstancePage({
         serverName={server.name}
         plugins={PLUGIN_DESCRIPTIONS}
         freeBytes={root?.freeBytes ?? null}
+        maps={maps}
       />
     </div>
   );

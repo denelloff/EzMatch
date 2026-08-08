@@ -26,3 +26,7 @@ apps/agent/.state/
 # Prisma generated client
 packages/db/src/generated/
 
+# Uploaded team logos (keep directory via .gitkeep)
+apps/panel/public/uploads/teams/*
+!apps/panel/public/uploads/teams/.gitkeep
+

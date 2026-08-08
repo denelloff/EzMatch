@@ -2,7 +2,7 @@
   "name": "ppanel",
   "version": "0.1.0",
   "private": true,
-  "description": "PPanel - control panel for CS2 dedicated servers and matches",
+  "description": "eZ-Match - control panel for CS2 dedicated servers and matches",
   "engines": {
     "node": ">=20.11"
   },

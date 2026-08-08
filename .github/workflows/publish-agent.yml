@@ -15,7 +15,7 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ppanel-agent
+  IMAGE_NAME: ez-agent
 
 jobs:
   build-and-push:

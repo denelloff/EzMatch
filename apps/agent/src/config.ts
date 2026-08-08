@@ -43,7 +43,7 @@ export function loadConfig(version: string): AgentConfig {
     hubUrl,
     network: process.env.PPANEL_NETWORK ?? 'ppanel',
     logPort: optionalInt('PPANEL_LOG_PORT', 8787),
-    agentHost: process.env.PPANEL_AGENT_HOST ?? 'ppanel-agent',
+    agentHost: process.env.PPANEL_AGENT_HOST ?? 'ez-agent',
     stateDir: process.env.PPANEL_STATE_DIR ?? '/var/lib/ppanel',
     version,
     cs2Image: process.env.PPANEL_CS2_IMAGE ?? 'joedwards32/cs2:latest',

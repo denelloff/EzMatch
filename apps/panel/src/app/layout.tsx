@@ -18,7 +18,7 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: 'PMatch',
+  title: 'eZ-Match',
   description: 'Control panel for Counter-Strike 2 servers and matches',
 };
 

@@ -8,6 +8,8 @@ export const runtime = 'nodejs';
 
 /**
  * Plain form POST — updates the agent image without SSH when the agent is online.
+ * Relative Location headers so reverse proxies (pm.denello.ru) are not bounced
+ * onto localhost via request.url.
  */
 export async function POST(
   request: Request,
@@ -15,13 +17,17 @@ export async function POST(
 ) {
   const { id: serverId } = await context.params;
   const user = await requireRole('ADMIN');
+  const wantsJson = request.headers.get('accept')?.includes('application/json');
 
   const server = await prisma.server.findUnique({
     where: { id: serverId },
     select: { id: true, name: true, status: true },
   });
   if (!server) {
-    return redirectWithError(request, '/admin/servers', 'Server not found.');
+    if (wantsJson) {
+      return NextResponse.json({ error: 'Server not found.' }, { status: 404 });
+    }
+    return redirectWithError('/admin/servers', 'Server not found.');
   }
 
   try {
@@ -39,10 +45,17 @@ export async function POST(
     });
 
     revalidatePath(`/admin/servers/${serverId}`);
-    return NextResponse.redirect(
-      new URL(`/admin/servers/${serverId}?task=${response.taskId}`, request.url),
-      303,
-    );
+
+    if (wantsJson) {
+      return NextResponse.json({ taskId: response.taskId });
+    }
+
+    return new NextResponse(null, {
+      status: 303,
+      headers: {
+        Location: `/admin/servers/${serverId}?task=${response.taskId}`,
+      },
+    });
   } catch (error) {
     const message =
       error instanceof HubError
@@ -50,12 +63,19 @@ export async function POST(
         : error instanceof Error
           ? error.message
           : 'Failed to start agent update.';
-    return redirectWithError(request, `/admin/servers/${serverId}`, message);
+    if (wantsJson) {
+      return NextResponse.json({ error: message }, { status: 502 });
+    }
+    return redirectWithError(`/admin/servers/${serverId}`, message);
   }
 }
 
-function redirectWithError(request: Request, path: string, message: string) {
-  const url = new URL(path, request.url);
-  url.searchParams.set('deleteError', message);
-  return NextResponse.redirect(url, 303);
+function redirectWithError(path: string, message: string) {
+  const sep = path.includes('?') ? '&' : '?';
+  return new NextResponse(null, {
+    status: 303,
+    headers: {
+      Location: `${path}${sep}deleteError=${encodeURIComponent(message)}`,
+    },
+  });
 }

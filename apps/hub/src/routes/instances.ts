@@ -224,6 +224,100 @@ export function registerInstanceRoutes(app: HubApp, config: HubConfig): void {
   );
 
   app.get('/internal/plugins', async () => ({ plugins: PLUGIN_DESCRIPTIONS }));
+
+  /**
+   * Force-delete an instance: ask the agent to scrub Docker artefacts, then
+   * drop the panel row even if the agent had nothing to clean (failed create).
+   */
+  app.post<{ Params: { instanceId: string } }>(
+    '/internal/instances/:instanceId/purge',
+    async (request, reply) => {
+      const body = z
+        .object({
+          removeVolume: z.boolean().optional(),
+          createdById: z.string().max(64).nullable().optional(),
+        })
+        .safeParse(request.body ?? {});
+      if (!body.success) {
+        return reply.code(400).send({ error: 'invalid_body', detail: body.error.issues });
+      }
+
+      const { instanceId } = request.params;
+      const instance = await db().gameInstance.findUnique({ where: { id: instanceId } });
+      if (!instance) return reply.code(404).send({ error: 'not_found' });
+
+      const removeVolume = body.data.removeVolume ?? true;
+      let agentError: string | null = null;
+
+      try {
+        await agents.dispatch(instance.serverId, {
+          type: 'instance.remove',
+          instanceId,
+          removeVolume,
+          containerName: instance.containerName,
+          volumeName: instance.volumeName,
+        });
+      } catch (error) {
+        agentError =
+          error instanceof AgentOfflineError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : String(error);
+      }
+
+      await purgeInstanceRow(instanceId);
+
+      return reply.send({
+        ok: true,
+        serverId: instance.serverId,
+        agentCleaned: agentError == null,
+        agentError,
+      });
+    },
+  );
+}
+
+async function removeNames(
+  instanceId: string,
+): Promise<{ containerName?: string; volumeName?: string }> {
+  const instance = await db().gameInstance.findUnique({
+    where: { id: instanceId },
+    select: { containerName: true, volumeName: true },
+  });
+  if (!instance) return {};
+  return {
+    containerName: instance.containerName,
+    volumeName: instance.volumeName,
+  };
+}
+
+async function purgeInstanceRow(instanceId: string): Promise<void> {
+  const matches = await db().match.findMany({
+    where: { instanceId },
+    select: { id: true },
+  });
+  const matchIds = matches.map((row) => row.id);
+
+  if (matchIds.length > 0) {
+    await db().matchDemo.deleteMany({ where: { matchId: { in: matchIds } } });
+    await db().matchTransition.deleteMany({ where: { matchId: { in: matchIds } } });
+    await db().matchPlayer.deleteMany({ where: { matchId: { in: matchIds } } });
+    await db().gameEvent.updateMany({
+      where: { matchId: { in: matchIds } },
+      data: { matchId: null },
+    });
+    await db().match.deleteMany({ where: { id: { in: matchIds } } });
+  }
+
+  await db().gameEvent.deleteMany({ where: { instanceId } });
+  await db().consoleLine.deleteMany({ where: { instanceId } });
+  await db().pluginInstall.deleteMany({ where: { instanceId } });
+  await db().task.updateMany({
+    where: { instanceId },
+    data: { instanceId: null },
+  });
+  await db().gameInstance.delete({ where: { id: instanceId } });
 }
 
 async function buildLifecycleCommand(
@@ -243,6 +337,7 @@ async function buildLifecycleCommand(
         type: 'instance.remove',
         instanceId,
         removeVolume: body.removeVolume ?? false,
+        ...(await removeNames(instanceId)),
       } as const;
     case 'update':
       return {

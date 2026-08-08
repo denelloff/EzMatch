@@ -150,7 +150,7 @@ export const PLUGIN_DESCRIPTIONS: PluginCatalogEntry[] = [
     summary:
       'Restores fake_rcon_password and fake_rcon for admins typing into the in-game console.',
     caution:
-      'Uses the same password as RCON (rcon_password). PMatch itself drives the server through the container console and does not need this plugin.',
+      'Uses the same password as RCON (rcon_password). eZ-Match itself drives the server through the container console and does not need this plugin.',
     requires: ['metamod'],
   },
 ];

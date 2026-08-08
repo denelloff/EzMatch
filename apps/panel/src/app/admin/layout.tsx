@@ -75,6 +75,10 @@ export default async function AdminLayout({
         { href: '/admin/stats/weapons', label: t.navStatsWeapons },
       ],
     },
+    {
+      title: t.adminSectionSettings,
+      items: [{ href: '/admin/settings', label: t.adminNavSettings }],
+    },
   ];
 
   return (
@@ -82,7 +86,7 @@ export default async function AdminLayout({
       <AdminSidebar
         sections={sections}
         creditsLabel={t.adminNavCredits}
-        copyright={`© ${new Date().getFullYear()} PMatch`}
+        copyright={`© ${new Date().getFullYear()} eZ-Match`}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -115,7 +119,7 @@ export default async function AdminLayout({
           </div>
         </header>
 
-        <main className="pmatch-enter flex-1 overflow-auto px-6 py-6">{children}</main>
+        <main className="ezmatch-enter flex-1 overflow-auto px-6 py-4">{children}</main>
       </div>
     </div>
   );

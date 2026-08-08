@@ -180,6 +180,48 @@ export default async function ServerPage({
         </Notice>
       ) : null}
 
+      {liveTaskId && liveTask ? (
+        <DeployAgentPanel
+          taskId={liveTaskId}
+          initial={{
+            status: liveTask.status,
+            phase: liveTask.phase,
+            percent: liveTask.percent,
+            message: liveTask.message,
+            error: liveTask.error,
+          }}
+          labels={{
+            title:
+              liveTask.type === 'server.agentUpdate'
+                ? t.serverUpdateAgentTitle
+                : liveTask.type.startsWith('instance.')
+                  ? t.serverDeployTitleServer
+                  : t.serverDeployTitle,
+            waiting: t.serverDeployWaiting,
+            consoleTitle: t.serverLiveConsole,
+            consoleHint: t.serverLiveConsoleHint,
+            live: t.serverLiveConnected,
+            ended: t.serverLiveEnded,
+            phaseQueued: t.serverPhaseQueued,
+            phasePreflight: t.serverPhasePreflight,
+            phaseDocker: t.serverPhaseDocker,
+            phaseDisk: t.serverPhaseDisk,
+            phaseNetwork: t.serverPhaseNetwork,
+            phaseCredentials: t.serverPhaseCredentials,
+            phaseAgent: t.serverPhaseAgent,
+            phaseDone: t.serverPhaseDone,
+            taskSucceeded: t.serverTaskSucceeded,
+            taskFailed: t.serverTaskFailed,
+            taskTimedOut: t.serverTaskTimedOut,
+            taskRunning: t.serverTaskRunning,
+            taskQueued: t.serverTaskQueued,
+            progressPercent: t.serverProgressPercent,
+            progressEta: t.serverProgressEta,
+            progressEtaWait: t.serverProgressEtaWait,
+          }}
+        />
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader
@@ -337,48 +379,6 @@ export default async function ServerPage({
             </p>
           )}
         </Card>
-      ) : null}
-
-      {liveTaskId && liveTask ? (
-        <DeployAgentPanel
-          taskId={liveTaskId}
-          initial={{
-            status: liveTask.status,
-            phase: liveTask.phase,
-            percent: liveTask.percent,
-            message: liveTask.message,
-            error: liveTask.error,
-          }}
-          labels={{
-            title:
-              liveTask.type === 'server.agentUpdate'
-                ? t.serverUpdateAgentTitle
-                : liveTask.type.startsWith('instance.')
-                  ? t.serverDeployTitleServer
-                  : t.serverDeployTitle,
-            waiting: t.serverDeployWaiting,
-            consoleTitle: t.serverLiveConsole,
-            consoleHint: t.serverLiveConsoleHint,
-            live: t.serverLiveConnected,
-            ended: t.serverLiveEnded,
-            phaseQueued: t.serverPhaseQueued,
-            phasePreflight: t.serverPhasePreflight,
-            phaseDocker: t.serverPhaseDocker,
-            phaseDisk: t.serverPhaseDisk,
-            phaseNetwork: t.serverPhaseNetwork,
-            phaseCredentials: t.serverPhaseCredentials,
-            phaseAgent: t.serverPhaseAgent,
-            phaseDone: t.serverPhaseDone,
-            taskSucceeded: t.serverTaskSucceeded,
-            taskFailed: t.serverTaskFailed,
-            taskTimedOut: t.serverTaskTimedOut,
-            taskRunning: t.serverTaskRunning,
-            taskQueued: t.serverTaskQueued,
-            progressPercent: t.serverProgressPercent,
-            progressEta: t.serverProgressEta,
-            progressEtaWait: t.serverProgressEtaWait,
-          }}
-        />
       ) : null}
     </div>
   );

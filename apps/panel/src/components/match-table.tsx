@@ -10,6 +10,8 @@ import { STATE_LABEL, STATE_TONE, formatScore, isLiveState } from '@/lib/match-s
 
 export interface MatchRow {
   id: string;
+  /** Sequential public id (1, 2, 3, …). */
+  number: number;
   shortId: string;
   title: string;
   state: MatchState;
@@ -21,6 +23,9 @@ export interface MatchRow {
   instanceId: string;
   instanceName: string;
   serverName: string;
+  lastError: string | null;
+  /** Optional CS2 connect line for admin lists. */
+  connect?: string;
 }
 
 export interface MatchTableLabels {
@@ -46,6 +51,8 @@ export function MatchTable({
   emptyDescription,
   labels,
   defaultLiveRefresh = false,
+  /** Base path for the Show link. Admin control room uses `/admin/matches`. */
+  matchHrefBase = '/matches',
   /** When set, the server column becomes a link into the admin instance page. */
   linkInstances = false,
 }: {
@@ -55,6 +62,8 @@ export function MatchTable({
   labels: MatchTableLabels;
   /** Only the in-progress list polls by default; the archive never changes. */
   defaultLiveRefresh?: boolean;
+  /** Base path for Show — `/matches` (public scorebot) or `/admin/matches` (control room). */
+  matchHrefBase?: string;
   linkInstances?: boolean;
 }) {
   const router = useRouter();
@@ -180,7 +189,7 @@ export function MatchTable({
                     </Badge>
                   </td>
                   <td className="px-5 py-2.5 text-right">
-                    <Link href={`/matches/${row.id}`} className={chipClass}>
+                    <Link href={`${matchHrefBase}/${row.id}`} className={chipClass}>
                       {labels.show}
                     </Link>
                   </td>

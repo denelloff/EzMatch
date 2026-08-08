@@ -2,7 +2,9 @@
 
 import { useEffect, useRef } from 'react';
 import { Badge, Notice } from '@/components/ui';
+import { useProgressEta } from '@/hooks/use-progress-eta';
 import { useTaskStream } from '@/hooks/use-task-stream';
+import { formatEta } from '@/lib/format';
 
 function phaseLabel(
   phase: string | undefined,
@@ -68,6 +70,9 @@ export interface DeployAgentLabels {
   taskTimedOut: string;
   taskRunning: string;
   taskQueued: string;
+  progressPercent: string;
+  progressEta: string;
+  progressEtaWait: string;
 }
 
 export function DeployAgentPanel({
@@ -101,20 +106,38 @@ export function DeployAgentPanel({
   );
   const logRef = useRef<HTMLPreElement>(null);
 
+  const status = update?.status ?? 'QUEUED';
+  const percent = update?.percent ?? null;
+  const running = status === 'RUNNING' || status === 'QUEUED';
+  const etaMs = useProgressEta(percent, running);
+
   useEffect(() => {
     const el = logRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [log]);
 
-  const status = update?.status ?? 'QUEUED';
-  const percent = update?.percent ?? null;
+  const displayPercent =
+    percent != null
+      ? Math.round(percent)
+      : status === 'SUCCEEDED'
+        ? 100
+        : null;
   const tone =
     status === 'SUCCEEDED'
       ? 'ok'
       : status === 'FAILED' || status === 'TIMED_OUT'
         ? 'danger'
         : 'info';
+
+  const etaText =
+    status === 'SUCCEEDED'
+      ? null
+      : etaMs != null && etaMs > 0
+        ? labels.progressEta.replace('{eta}', formatEta(etaMs).replace(/^~/, ''))
+        : running && displayPercent != null && displayPercent > 0
+          ? labels.progressEtaWait
+          : null;
 
   return (
     <div className="space-y-4">
@@ -135,6 +158,19 @@ export function DeployAgentPanel({
         </div>
 
         <div className="px-5 py-4">
+          <div className="mb-2 flex items-baseline justify-between gap-3 text-xs">
+            <span className="font-medium tabular-nums text-ink-100">
+              {displayPercent != null
+                ? labels.progressPercent.replace(
+                    '{percent}',
+                    String(displayPercent),
+                  )
+                : '—'}
+            </span>
+            {etaText ? (
+              <span className="text-ink-400">{etaText}</span>
+            ) : null}
+          </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-800">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
@@ -142,8 +178,8 @@ export function DeployAgentPanel({
               }`}
               style={{
                 width:
-                  percent != null
-                    ? `${percent}%`
+                  displayPercent != null
+                    ? `${displayPercent}%`
                     : status === 'SUCCEEDED'
                       ? '100%'
                       : '10%',

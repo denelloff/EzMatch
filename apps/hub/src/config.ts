@@ -71,10 +71,10 @@ export function loadConfig(): HubConfig {
     agent: {
       hubPublicUrl,
       // Only the agent container is pulled on game hosts — panel/hub stay local.
-      image: process.env.AGENT_IMAGE ?? 'ghcr.io/denelloff/ppanel-agent:0.1.0',
-      containerName: process.env.AGENT_CONTAINER_NAME ?? 'ppanel-agent',
+      image: process.env.AGENT_IMAGE ?? 'ghcr.io/denelloff/ez-agent:0.1.0',
+      containerName: process.env.AGENT_CONTAINER_NAME ?? 'ez-agent',
       network: process.env.AGENT_DOCKER_NETWORK ?? 'ppanel',
-      stateVolume: process.env.AGENT_STATE_VOLUME ?? 'ppanel-agent-state',
+      stateVolume: process.env.AGENT_STATE_VOLUME ?? 'ez-agent-state',
       logPort: optionalInt('AGENT_LOG_PORT', 8787),
       // ~2 GiB is enough to pull/replace the agent image itself.
       minFreeBytes: optionalInt('AGENT_MIN_FREE_BYTES', 2_147_483_648),

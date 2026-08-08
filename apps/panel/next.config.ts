@@ -19,12 +19,15 @@ const nextConfig: NextConfig = {
   // Next.js generates AGENTS.md and CLAUDE.md next to the app otherwise, which
   // is not something this repository wants checked in.
   agentRules: false,
-  // Reaching the dev server through a reverse proxy or a hostname other than
-  // localhost needs that origin listed, or Next refuses to serve dev assets.
-  allowedDevOrigins: (process.env.PANEL_DEV_ORIGINS ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+  // Reaching the dev server through pm.denello.ru (reverse proxy) needs that
+  // origin listed, or Next refuses to serve dev assets.
+  allowedDevOrigins: [
+    'pm.denello.ru',
+    ...(process.env.PANEL_DEV_ORIGINS ?? '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  ],
   // Prisma and the workspace packages ship as real Node modules; bundling them
   // into the server build breaks the driver adapter's native bindings.
   serverExternalPackages: ['@prisma/client', '@prisma/adapter-mariadb', 'mariadb'],
@@ -43,15 +46,18 @@ const nextConfig: NextConfig = {
             value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
           },
           {
-            // The console renders raw server output, so script execution is
-            // restricted to what the app itself ships. `unsafe-inline` on styles
-            // is what Next.js needs for its own style injection.
+            // Next.js App Router injects inline bootstrap/hydration scripts
+            // (`self.__next_f.push`, …). Without 'unsafe-inline' (or a per-request
+            // nonce middleware) those are blocked, React never hydrates, and every
+            // client onClick — including Delete — does nothing. Styles need
+            // 'unsafe-inline' for Next's own style injection; 'unsafe-eval' only
+            // in development for React's error overlays.
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              `script-src 'self'${process.env.NODE_ENV === 'production' ? '' : " 'unsafe-eval'"}`,
+              `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'production' ? '' : " 'unsafe-eval'"}`,
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data:",
+              "img-src 'self' data: blob: https://flagcdn.com",
               "connect-src 'self'",
               "font-src 'self'",
               "frame-ancestors 'none'",

@@ -12,6 +12,24 @@ export interface TaskUpdate {
   result?: unknown;
 }
 
+const MAX_TASK_LOG_LINES = 1_000;
+const taskLogs = new Map<string, string[]>();
+
+/** In-memory console for a running task — backfilled when an SSE client connects. */
+export function getTaskLog(taskId: string): string[] {
+  return taskLogs.get(taskId) ?? [];
+}
+
+function appendTaskLog(taskId: string, message: string): void {
+  const lines = taskLogs.get(taskId) ?? [];
+  if (lines[lines.length - 1] === message) return;
+  lines.push(message);
+  if (lines.length > MAX_TASK_LOG_LINES) {
+    lines.splice(0, lines.length - MAX_TASK_LOG_LINES);
+  }
+  taskLogs.set(taskId, lines);
+}
+
 export async function createTask(input: {
   serverId: string;
   instanceId?: string | null;
@@ -72,9 +90,15 @@ export async function updateTask(
   }
 
   publishTask(taskId, update);
+
+  if (finished) {
+    // Keep logs briefly for the final SSE backfill, then drop.
+    setTimeout(() => taskLogs.delete(taskId), 5 * 60_000);
+  }
 }
 
 function publishTask(taskId: string, update: TaskUpdate): void {
+  if (update.message) appendTaskLog(taskId, update.message);
   bus.publish(`task:${taskId}`, { taskId, ...update });
 }
 

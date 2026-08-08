@@ -1,5 +1,6 @@
 'use client';
 
+import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge, inputClass } from '@/components/ui';
 import { sendConsoleAction } from './actions';
@@ -34,10 +35,13 @@ export function ConsoleView({
   instanceId,
   canSend,
   running,
+  embedded = false,
 }: {
   instanceId: string;
   canSend: boolean;
   running: boolean;
+  /** Fill parent height (match room drawer). */
+  embedded?: boolean;
 }) {
   const [lines, setLines] = useState<ConsoleLine[]>([]);
   const [connected, setConnected] = useState(false);
@@ -46,9 +50,11 @@ export function ConsoleView({
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
+  const [autoscroll, setAutoscroll] = useState(true);
 
   const viewport = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
+  /** Skip the next scroll handler so enabling autoscroll does not immediately flip it off. */
+  const ignoreScroll = useRef(false);
 
   const append = useCallback((incoming: ConsoleLine[]) => {
     setLines((current) => [...current, ...incoming].slice(-MAX_LINES));
@@ -74,19 +80,36 @@ export function ConsoleView({
     return () => source.close();
   }, [instanceId, append]);
 
-  // Autoscroll, but only while the operator is already at the bottom: yanking
-  // the view away mid-scroll makes reading a stack trace impossible.
   useEffect(() => {
     const element = viewport.current;
-    if (!element || !pinned.current) return;
+    if (!element || !autoscroll) return;
+    ignoreScroll.current = true;
     element.scrollTop = element.scrollHeight;
-  }, [lines]);
+    requestAnimationFrame(() => {
+      ignoreScroll.current = false;
+    });
+  }, [lines, autoscroll]);
 
   const onScroll = () => {
+    if (ignoreScroll.current) return;
     const element = viewport.current;
     if (!element) return;
-    const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
-    pinned.current = distance < 40;
+    const distance =
+      element.scrollHeight - element.scrollTop - element.clientHeight;
+    const atBottom = distance < 40;
+    if (!atBottom && autoscroll) setAutoscroll(false);
+    if (atBottom && !autoscroll) setAutoscroll(true);
+  };
+
+  const toggleAutoscroll = (next: boolean) => {
+    setAutoscroll(next);
+    if (next && viewport.current) {
+      ignoreScroll.current = true;
+      viewport.current.scrollTop = viewport.current.scrollHeight;
+      requestAnimationFrame(() => {
+        ignoreScroll.current = false;
+      });
+    }
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -97,18 +120,17 @@ export function ConsoleView({
     setBusy(true);
     setError(null);
     setValue('');
-    setHistory((current) => [...current.filter((entry) => entry !== command), command].slice(-100));
+    setHistory((current) =>
+      [...current.filter((entry) => entry !== command), command].slice(-100),
+    );
     setHistoryIndex(null);
-    pinned.current = true;
+    setAutoscroll(true);
     append([{ ts: new Date().toISOString(), line: `> ${command}`, local: true }]);
 
     const result = await sendConsoleAction({ instanceId, command });
     if (!result.ok) {
       setError(result.error);
     } else if (result.output.length > 0) {
-      // The stream carries the same output, so only lines the capture window
-      // caught but the stream has not delivered yet would be duplicated. Drop
-      // anything already present to keep the tail readable.
       setLines((current) => {
         const seen = new Set(current.slice(-200).map((entry) => entry.line));
         const fresh = result.output
@@ -124,7 +146,8 @@ export function ConsoleView({
     if (event.key === 'ArrowUp') {
       event.preventDefault();
       if (history.length === 0) return;
-      const next = historyIndex === null ? history.length - 1 : Math.max(0, historyIndex - 1);
+      const next =
+        historyIndex === null ? history.length - 1 : Math.max(0, historyIndex - 1);
       setHistoryIndex(next);
       setValue(history[next] ?? '');
       return;
@@ -144,23 +167,45 @@ export function ConsoleView({
   };
 
   return (
-    <div className="flex h-[32rem] flex-col">
-      <div className="flex items-center justify-between border-b border-ink-700 px-5 py-3">
-        <div>
-          <h2 className="text-sm font-medium text-ink-100">Console</h2>
-          <p className="mt-0.5 text-xs text-ink-400">
-            Attached to the container. Passwords and tokens are masked.
-          </p>
+    <div
+      className={`flex min-h-0 flex-col ${embedded ? 'h-full' : 'h-[32rem]'}`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-700 px-1 py-2 sm:px-2">
+        <p className="text-xs text-ink-400">
+          Attached to the container. Passwords and tokens are masked.
+        </p>
+        <div className="flex items-center gap-3">
+          <label className="flex cursor-pointer items-center gap-2 select-none">
+            <span className="text-[11px] text-ink-400">Autoscroll</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoscroll}
+              aria-label="Autoscroll"
+              onClick={() => toggleAutoscroll(!autoscroll)}
+              className={clsx(
+                'relative h-5 w-9 shrink-0 rounded-full transition duration-200',
+                autoscroll ? 'bg-brand-500' : 'bg-ink-600',
+              )}
+            >
+              <span
+                className={clsx(
+                  'absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow transition duration-200',
+                  autoscroll && 'translate-x-4',
+                )}
+              />
+            </button>
+          </label>
+          <Badge tone={connected ? 'ok' : 'warn'}>
+            {connected ? 'streaming' : 'reconnecting'}
+          </Badge>
         </div>
-        <Badge tone={connected ? 'ok' : 'warn'}>
-          {connected ? 'streaming' : 'reconnecting'}
-        </Badge>
       </div>
 
       <div
         ref={viewport}
         onScroll={onScroll}
-        className="console-surface flex-1 overflow-auto bg-ink-950 px-4 py-3 text-xs leading-relaxed"
+        className="console-surface min-h-0 flex-1 overflow-x-hidden overflow-y-scroll bg-ink-950 px-4 py-3 text-xs leading-relaxed"
       >
         {lines.length === 0 ? (
           <p className="text-ink-500">No output yet.</p>
@@ -182,12 +227,12 @@ export function ConsoleView({
         </p>
       ) : null}
 
-      <form onSubmit={submit} className="border-t border-ink-700 px-4 py-3">
+      <form onSubmit={submit} className="border-t border-ink-700 px-1 py-2 sm:px-2">
         <input
           value={value}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={onKeyDown}
-          list="ppanel-console-suggestions"
+          list="ezmatch-console-suggestions"
           disabled={!canSend || !running || busy}
           spellCheck={false}
           autoComplete="off"
@@ -200,7 +245,7 @@ export function ConsoleView({
           }
           className={`${inputClass} font-mono`}
         />
-        <datalist id="ppanel-console-suggestions">
+        <datalist id="ezmatch-console-suggestions">
           {SUGGESTIONS.map((suggestion) => (
             <option key={suggestion} value={suggestion} />
           ))}

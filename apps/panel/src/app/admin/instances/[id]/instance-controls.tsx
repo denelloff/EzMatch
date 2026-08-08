@@ -6,10 +6,10 @@ import { TaskProgress } from '@/components/task-progress';
 import {
   Notice,
   buttonClass,
-  checkboxClass,
   dangerButtonClass,
   secondaryButtonClass,
 } from '@/components/ui';
+import { DeleteInstanceButton } from '@/app/admin/instances/delete-instance-button';
 import { instanceLifecycleAction, type LifecycleState } from './actions';
 
 const TASK_TITLE: Record<string, string> = {
@@ -17,7 +17,7 @@ const TASK_TITLE: Record<string, string> = {
   stop: 'Stopping the server',
   restart: 'Restarting the server',
   update: 'Updating CS2',
-  remove: 'Removing the container',
+  reconfigure: 'Applying server settings',
 };
 
 export function InstanceControls({
@@ -26,12 +26,14 @@ export function InstanceControls({
   canOperate,
   canAdmin,
   updateWarning,
+  deleteLabel,
 }: {
   instanceId: string;
   state: string;
   canOperate: boolean;
   canAdmin: boolean;
   updateWarning: string | null;
+  deleteLabel: string;
 }) {
   const [result, formAction] = useActionState<LifecycleState, FormData>(
     instanceLifecycleAction,
@@ -40,7 +42,6 @@ export function InstanceControls({
   // Only used to label the progress panel once a task comes back.
   const [action, setAction] = useState<string>('start');
   const [confirmingUpdate, setConfirmingUpdate] = useState(false);
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
 
   const running = state === 'RUNNING';
   const busy = ['CREATING', 'INSTALLING', 'STARTING', 'STOPPING', 'UPDATING'].includes(
@@ -88,26 +89,6 @@ export function InstanceControls({
             onSelect={setAction}
           />
         ) : null}
-
-        {confirmingRemove ? (
-          <>
-            <label className="flex items-center gap-2 text-xs text-ink-300">
-              <input
-                type="checkbox"
-                name="removeVolume"
-                className={checkboxClass}
-              />
-              also delete the ~60 GB volume
-            </label>
-            <Button
-              action="remove"
-              label="Yes, remove"
-              className={dangerButtonClass}
-              disabled={!canAdmin || state === 'REMOVED'}
-              onSelect={setAction}
-            />
-          </>
-        ) : null}
       </form>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -130,24 +111,9 @@ export function InstanceControls({
           </button>
         )}
 
-        {!confirmingRemove ? (
-          <button
-            type="button"
-            className={secondaryButtonClass}
-            disabled={!canAdmin || state === 'REMOVED'}
-            onClick={() => setConfirmingRemove(true)}
-          >
-            Remove…
-          </button>
-        ) : (
-          <button
-            type="button"
-            className={secondaryButtonClass}
-            onClick={() => setConfirmingRemove(false)}
-          >
-            Cancel removal
-          </button>
-        )}
+        {canAdmin && state !== 'REMOVED' ? (
+          <DeleteInstanceButton instanceId={instanceId} label={deleteLabel} />
+        ) : null}
       </div>
 
       {confirmingUpdate ? (

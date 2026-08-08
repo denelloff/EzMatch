@@ -5,7 +5,7 @@ import { LIVE_MATCH_STATES } from '@/lib/match-state';
 import { getLocale, getT } from '@/lib/i18n';
 import { NavLink, NavMenu } from '@/components/nav-menu';
 import { LanguageToggle } from '@/components/language-toggle';
-import { PMatchLogo } from '@/components/pmatch-logo';
+import { EzMatchLogo } from '@/components/pmatch-logo';
 import { logoutAction } from '../login/actions';
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +28,7 @@ export default async function AppLayout({
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 border-b border-ink-700/80 bg-ink-900/75 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4">
-          <PMatchLogo href="/" size="sm" />
+          <EzMatchLogo href="/" size="sm" />
           <nav className="flex items-center gap-1">
             <NavLink
               item={{
@@ -78,7 +78,7 @@ export default async function AppLayout({
         </div>
       </header>
 
-      <main className="pmatch-enter mx-auto max-w-7xl px-4 py-8">{children}</main>
+      <main className="ezmatch-enter mx-auto max-w-7xl px-4 py-8">{children}</main>
     </div>
   );
 }

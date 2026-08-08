@@ -2,7 +2,9 @@
 
 import { useEffect, useRef } from 'react';
 import { Badge, Notice } from '@/components/ui';
+import { useProgressEta } from '@/hooks/use-progress-eta';
 import { useTaskStream } from '@/hooks/use-task-stream';
+import { formatEta } from '@/lib/format';
 
 export function TaskProgress({
   taskId,
@@ -10,12 +12,16 @@ export function TaskProgress({
   onDone,
   logMaxHeightClass = 'max-h-56',
   waitingLabel = 'Waiting for install output…',
+  etaLeftLabel = '~{eta} left',
+  etaWaitLabel = 'Estimating time…',
 }: {
   taskId: string;
   title: string;
   onDone?: 'refresh';
   logMaxHeightClass?: string;
   waitingLabel?: string;
+  etaLeftLabel?: string;
+  etaWaitLabel?: string;
 }) {
   const { update, log } = useTaskStream(taskId, onDone);
   const logRef = useRef<HTMLPreElement>(null);
@@ -28,12 +34,29 @@ export function TaskProgress({
 
   const status = update?.status ?? 'QUEUED';
   const percent = update?.percent ?? null;
+  const running = status === 'RUNNING' || status === 'QUEUED';
+  const displayPercent =
+    percent != null
+      ? Math.round(percent)
+      : status === 'SUCCEEDED'
+        ? 100
+        : null;
+  const etaMs = useProgressEta(percent, running);
   const tone =
     status === 'SUCCEEDED'
       ? 'ok'
       : status === 'FAILED' || status === 'TIMED_OUT'
         ? 'danger'
         : 'info';
+
+  const etaText =
+    status === 'SUCCEEDED'
+      ? null
+      : etaMs != null && etaMs > 0
+        ? etaLeftLabel.replace('{eta}', formatEta(etaMs).replace(/^~/, ''))
+        : running && displayPercent != null && displayPercent > 0
+          ? etaWaitLabel
+          : null;
 
   return (
     <div className="rounded-2xl border border-ink-700/80 bg-ink-900/85">
@@ -48,6 +71,12 @@ export function TaskProgress({
       </div>
 
       <div className="px-5 py-4">
+        <div className="mb-2 flex items-baseline justify-between gap-3 text-xs">
+          <span className="font-medium tabular-nums text-ink-100">
+            {displayPercent != null ? `${displayPercent}%` : '—'}
+          </span>
+          {etaText ? <span className="text-ink-400">{etaText}</span> : null}
+        </div>
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-800">
           <div
             className={`h-full rounded-full transition-all duration-500 ${
@@ -55,8 +84,8 @@ export function TaskProgress({
             }`}
             style={{
               width:
-                percent != null
-                  ? `${percent}%`
+                displayPercent != null
+                  ? `${displayPercent}%`
                   : status === 'SUCCEEDED'
                     ? '100%'
                     : '10%',

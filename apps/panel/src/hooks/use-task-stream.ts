@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 export interface TaskUpdate {
   taskId: string;
@@ -14,26 +14,41 @@ export interface TaskUpdate {
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT']);
 
-export function useTaskStream(taskId: string, onDone?: 'refresh') {
-  const [update, setUpdate] = useState<TaskUpdate | null>(null);
-  const [log, setLog] = useState<string[]>([]);
-  const [live, setLive] = useState(true);
+export function useTaskStream(
+  taskId: string,
+  onDone?: 'refresh',
+  /** Snapshot from the DB so the UI is not stuck on "queued" before SSE arrives. */
+  initial?: TaskUpdate | null,
+) {
+  const [update, setUpdate] = useState<TaskUpdate | null>(
+    initial ? { ...initial, taskId } : null,
+  );
+  const [log, setLog] = useState<string[]>(
+    initial?.message ? [initial.message] : [],
+  );
+  const [live, setLive] = useState(
+    () => !initial?.status || !TERMINAL.has(initial.status),
+  );
   const router = useRouter();
+  const pathname = usePathname();
   const finished = useRef(false);
 
   useEffect(() => {
     finished.current = false;
-    setLive(true);
-    const source = new EventSource(`/api/stream/task/${taskId}`);
+    if (initial?.status && TERMINAL.has(initial.status)) {
+      setLive(false);
+      return;
+    }
 
-    source.addEventListener('message', (event) => {
-      const data = JSON.parse((event as MessageEvent<string>).data) as TaskUpdate;
+    setLive(true);
+
+    const apply = (data: TaskUpdate) => {
       setUpdate((previous) => ({ ...previous, ...data }));
 
       if (data.message) {
         setLog((lines) => {
           if (lines[lines.length - 1] === data.message) return lines;
-          return [...lines.slice(-499), data.message!];
+          return [...lines.slice(-999), data.message!];
         });
       }
 
@@ -42,9 +57,18 @@ export function useTaskStream(taskId: string, onDone?: 'refresh') {
         setLive(false);
         source.close();
         if (onDone === 'refresh') {
-          setTimeout(() => router.refresh(), 1500);
+          setTimeout(() => {
+            router.replace(pathname);
+            router.refresh();
+          }, 800);
         }
       }
+    };
+
+    const source = new EventSource(`/api/stream/task/${taskId}`);
+
+    source.addEventListener('message', (event) => {
+      apply(JSON.parse((event as MessageEvent<string>).data) as TaskUpdate);
     });
 
     source.onerror = () => {
@@ -55,7 +79,7 @@ export function useTaskStream(taskId: string, onDone?: 'refresh') {
     };
 
     return () => source.close();
-  }, [taskId, onDone, router]);
+  }, [taskId, onDone, router, pathname, initial?.status]);
 
   return { update, log, live };
 }

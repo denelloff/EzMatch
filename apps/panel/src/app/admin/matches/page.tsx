@@ -21,6 +21,7 @@ export default async function AdminLiveMatchesPage() {
         rows={rows}
         defaultLiveRefresh
         linkInstances
+        matchHrefBase="/admin/matches"
         emptyTitle={t.homeEmptyTitle}
         emptyDescription={t.homeEmptyDescription}
         labels={{

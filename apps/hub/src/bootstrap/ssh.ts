@@ -117,11 +117,17 @@ export function runBootstrapScript(
     };
 
     conn.on('ready', () => {
+      onLine({
+        kind: 'info',
+        text: `SSH connected to ${credentials.username}@${credentials.host}:${credentials.port}`,
+      });
       conn.exec('bash -s', (err, stream) => {
         if (err) {
           finish(() => reject(new SshError(err.message, 'EXEC_FAILED')));
           return;
         }
+
+        onLine({ kind: 'info', text: 'Remote shell started — running install script' });
 
         stream.on('close', (code: number | null) => {
           flush('\n', false);

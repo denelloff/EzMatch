@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { encryptSecret, loadMasterKey } from '@ppanel/db';
+import { decryptSecret, encryptSecret, loadMasterKey } from '@ppanel/db';
 import { randomBytes } from 'node:crypto';
 
 let cached: Buffer | null = null;
@@ -11,11 +11,17 @@ function masterKey(): Buffer {
 }
 
 /**
- * Encrypts a value for storage. The panel only ever encrypts: reading these
- * back is the hub's job, so a panel compromise cannot dump GSLT tokens.
+ * Encrypts a value for storage. GSLT / RCON stay hub-only when possible; match
+ * join passwords are also unsealed in the panel for the connect copy button.
  */
 export function seal(plaintext: string): string {
   return encryptSecret(plaintext, masterKey());
+}
+
+/** Decrypts a sealed secret. Empty ciphertext → empty string. */
+export function unseal(encoded: string): string {
+  if (!encoded) return '';
+  return decryptSecret(encoded, masterKey());
 }
 
 /** Base64url, so it survives being pasted into a config file or an env var. */

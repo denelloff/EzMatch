@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { HubApp } from '../app.js';
 import { bus, type BusTopic } from '../bus.js';
 import { db } from '../db.js';
+import { getTaskLog } from '../tasks.js';
 
 const HEARTBEAT_MS = 25_000;
 
@@ -15,8 +16,9 @@ function openStream(
   topics: BusTopic[],
   onOpen?: (write: (event: string, data: unknown) => void) => void | Promise<void>,
 ): void {
+  reply.hijack();
   reply.raw.writeHead(200, {
-    'Content-Type': 'text/event-stream',
+    'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
     // Nginx buffers proxied responses by default, which would stall the stream.
@@ -25,7 +27,10 @@ function openStream(
 
   const write = (event: string, data: unknown) => {
     if (reply.raw.writableEnded) return;
-    reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    // Pad each event so reverse proxies that buffer ~1–2 KiB still flush live.
+    reply.raw.write(
+      `event: ${event}\ndata: ${JSON.stringify(data)}\n\n: ${' '.repeat(2048)}\n\n`,
+    );
   };
 
   const unsubscribes = topics.map((topic) =>
@@ -34,7 +39,7 @@ function openStream(
 
   const heartbeat = setInterval(() => {
     if (reply.raw.writableEnded) return;
-    reply.raw.write(': keep-alive\n\n');
+    reply.raw.write(`: keep-alive ${' '.repeat(1024)}\n\n`);
   }, HEARTBEAT_MS);
 
   const cleanup = () => {
@@ -64,6 +69,10 @@ export function registerStreamRoutes(app: HubApp): void {
             message: task.message,
             error: task.error,
           });
+        }
+        // Replay buffered console lines so a late-opening tab is not empty.
+        for (const line of getTaskLog(taskId)) {
+          write('message', { taskId, message: line });
         }
       });
     },
@@ -106,7 +115,18 @@ export function registerStreamRoutes(app: HubApp): void {
   app.get<{ Params: { serverId: string } }>(
     '/internal/stream/server/:serverId',
     (request, reply) => {
-      openStream(request, reply, [`server:${request.params.serverId}`]);
+      const { serverId } = request.params;
+      openStream(request, reply, [`server:${serverId}`], async (write) => {
+        const server = await db().server.findUnique({
+          where: { id: serverId },
+          select: { status: true, hostInfo: true },
+        });
+        if (!server) return;
+        write('message', {
+          status: server.status,
+          host: server.hostInfo,
+        });
+      });
     },
   );
 

@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import Link from 'next/link';
 import { useId } from 'react';
 
-export function PMatchLogo({
+export function EzMatchLogo({
   href = '/',
   subtitle,
   size = 'md',
@@ -42,13 +42,8 @@ export function PMatchLogo({
           </defs>
           <rect width="40" height="40" rx="10" fill="#1a1f26" />
           <path
-            d="M8 28 V12.5 C8 10.5 9.4 9 11.5 9 H18.2 C23.8 9 27.2 12.2 27.2 17.2 C27.2 22.2 23.8 25.4 18.2 25.4 H13.2 V28 Z M13.2 20.6 H17.8 C20.6 20.6 22.1 19.1 22.1 17.2 C22.1 15.3 20.6 13.8 17.8 13.8 H13.2 Z"
+            d="M10 12.2 H26.5 C29.4 12.2 31.2 14.1 31.2 16.8 C31.2 19.1 29.9 20.7 27.8 21.2 C30.2 21.6 31.8 23.4 31.8 26 C31.8 29 29.8 31 26.6 31 H10 Z M15.2 16.4 V19.6 H24.6 C25.7 19.6 26.4 18.9 26.4 18 C26.4 17.1 25.7 16.4 24.6 16.4 Z M15.2 23.4 V26.8 H25 C26.2 26.8 27 26 27 25.1 C27 24.2 26.2 23.4 25 23.4 Z"
             fill={`url(#${gradId})`}
-          />
-          <path
-            d="M29.2 28 L24.4 19.6 L29.2 11.2 H33.6 L28.5 19.6 L33.6 28 Z"
-            fill="#6ea8d8"
-            opacity="0.92"
           />
         </svg>
       </span>
@@ -60,7 +55,7 @@ export function PMatchLogo({
           )}
           style={{ fontFamily: 'var(--font-display)' }}
         >
-          PMatch
+          eZ-Match
         </span>
         {subtitle ? (
           <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.14em] text-ink-400">
@@ -71,3 +66,6 @@ export function PMatchLogo({
     </Link>
   );
 }
+
+/** @deprecated Use EzMatchLogo */
+export const PMatchLogo = EzMatchLogo;

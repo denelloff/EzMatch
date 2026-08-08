@@ -30,7 +30,7 @@ export default async function DemosPage({
       <Card>
         <CardHeader
           title="GOTV recordings"
-          description="PMatch starts the recording when the match goes live and closes it when the match ends. The files stay on the game host."
+          description="eZ-Match starts the recording when the match goes live and closes it when the match ends. The files stay on the game host."
         />
 
         {match.demos.length === 0 ? (

@@ -155,7 +155,7 @@ export async function bootstrapServer(input: BootstrapInput): Promise<void> {
       throw new Error(
         `Agent container started but never reached the hub at ${agentConfig.hubPublicUrl}. ` +
           'From the game host that address must be reachable (not 127.0.0.1). ' +
-          'Forward/open the hub port on the PMatch machine, set HUB_PUBLIC_URL to a public ws:// or wss:// URL, then reinstall the agent.',
+          'Forward/open the hub port on the eZ-Match machine, set HUB_PUBLIC_URL to a public ws:// or wss:// URL, then reinstall ez-agent.',
       );
     }
 
