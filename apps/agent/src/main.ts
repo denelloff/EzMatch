@@ -8,7 +8,7 @@ import { log } from './logger.js';
 import { LogServer } from './logs/server.js';
 import { collectNetworkRates } from './network.js';
 
-const AGENT_VERSION = '0.1.0';
+const AGENT_VERSION = '0.1.1';
 
 async function main(): Promise<void> {
   const config = loadConfig(AGENT_VERSION);

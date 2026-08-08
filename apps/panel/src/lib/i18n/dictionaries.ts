@@ -108,6 +108,19 @@ const en = {
   serverRevokeToken: 'Revoke token',
   serverRevokeConfirm:
     'Revoking the token disconnects the agent immediately. The server has to be bootstrapped again over SSH. Continue?',
+  serverReinstall: 'Reinstall agent',
+  serverUpdateAgent: 'Update agent',
+  serverUpdateAgentTitle: 'Updating the agent',
+  serverUpdateAgentConfirm:
+    'Pull the latest agent image and restart the agent container? No SSH needed.',
+  serverReinstallTitle: 'Reinstall agent',
+  serverReinstallDescription:
+    'Enter SSH credentials again. PMatch will re-run the install on this host (Docker, agent image, token). Credentials are not stored.',
+  serverReinstallSubmit: 'Start reinstall',
+  serverReinstallConnecting: 'Connecting…',
+  serverReinstallCancel: 'Cancel',
+  serverReinstallNotFound: 'Server not found.',
+  serverReinstallFailed: 'Could not start agent reinstall.',
 
   addServerTitle: 'Add host',
   addServerDescription:
@@ -155,6 +168,13 @@ const en = {
 
   serverBack: '← Servers',
   serverInstallCs2: 'Install CS2 server',
+  instanceDelete: 'Delete',
+  instanceDeleteTitle: 'Delete CS2 instance?',
+  instanceDeleteBody:
+    'Remove “{name}” and ask the agent to delete its container and volume (~60 GB). This cannot be undone.',
+  instanceDeleteConfirm: 'Delete instance',
+  instanceDeleteCancel: 'Cancel',
+  instanceDeleteFailed: 'Failed to delete instance.',
   serverAgentUnknown: 'unknown',
   serverLastSeen: 'last seen',
   serverAgentLabel: 'agent',
@@ -169,6 +189,8 @@ const en = {
     'The agent is still deploying or offline. Install CS2 only after the host status is online.',
   serverAgentWaitDeploying:
     'Agent install is in progress below. CS2 can be installed after it connects.',
+  serverAgentHubHint:
+    'The agent must open a WebSocket to {url}. If status stays pending, open/forward that port on the PMatch PC and reinstall the agent.',
   serverCs2BlockedOffline:
     'The agent is not online yet. Finish agent deploy first, then install CS2.',
   serverHostTitle: 'Host',
@@ -191,9 +213,10 @@ const en = {
   serverRecentTasks: 'Recent tasks',
   serverDeployStarted: 'Agent deploy started — live output below.',
   serverDeployTitle: 'Deploying the agent',
+  serverDeployTitleServer: 'Installing the server',
   serverDeployWaiting: 'Waiting for install output…',
   serverLiveConsole: 'Live console',
-  serverLiveConsoleHint: 'SSH bootstrap stream from the hub',
+  serverLiveConsoleHint: 'Live output from the install — updates as each step runs',
   serverLiveConnected: '● live',
   serverLiveEnded: '● finished',
   serverPort: 'port',
@@ -214,8 +237,11 @@ const en = {
   serverPhaseDisk: 'disk',
   serverPhaseNetwork: 'network',
   serverPhaseCredentials: 'credentials',
-  serverPhaseAgent: 'agent',
-  serverPhaseDone: 'done',
+  serverPhaseAgent: 'Downloading the agent',
+  serverPhaseDone: 'Waiting for the agent',
+  serverProgressPercent: '{percent}%',
+  serverProgressEta: '~{eta} left',
+  serverProgressEtaWait: 'Estimating time…',
 
   langEn: 'EN',
   langRu: 'RUS',
@@ -324,6 +350,19 @@ const ru: Dictionary = {
   serverRevokeToken: 'Отозвать токен',
   serverRevokeConfirm:
     'Отзыв токена сразу отключает агент. Сервер придётся снова установить по SSH. Продолжить?',
+  serverReinstall: 'Переустановить агент',
+  serverUpdateAgent: 'Обновить агент',
+  serverUpdateAgentTitle: 'Обновление агента',
+  serverUpdateAgentConfirm:
+    'Скачать свежий образ агента и перезапустить контейнер? SSH не нужен.',
+  serverReinstallTitle: 'Переустановить агент',
+  serverReinstallDescription:
+    'Снова введите SSH-доступ. PMatch заново прогонит установку на этом хосте (Docker, образ агента, токен). Учётные данные не сохраняются.',
+  serverReinstallSubmit: 'Запустить переустановку',
+  serverReinstallConnecting: 'Подключение…',
+  serverReinstallCancel: 'Отмена',
+  serverReinstallNotFound: 'Сервер не найден.',
+  serverReinstallFailed: 'Не удалось начать переустановку агента.',
 
   addServerTitle: 'Добавить хост',
   addServerDescription:
@@ -371,6 +410,13 @@ const ru: Dictionary = {
 
   serverBack: '← Серверы',
   serverInstallCs2: 'Установить CS2 сервер',
+  instanceDelete: 'Удалить',
+  instanceDeleteTitle: 'Удалить инстанс CS2?',
+  instanceDeleteBody:
+    'Удалить «{name}» и попросить агент снести контейнер и том (~60 ГБ). Это нельзя отменить.',
+  instanceDeleteConfirm: 'Удалить инстанс',
+  instanceDeleteCancel: 'Отмена',
+  instanceDeleteFailed: 'Не удалось удалить инстанс.',
   serverAgentUnknown: 'неизвестен',
   serverLastSeen: 'последний контакт',
   serverAgentLabel: 'агент',
@@ -385,6 +431,8 @@ const ru: Dictionary = {
     'Агент ещё ставится или офлайн. CS2 можно ставить только когда статус хоста — онлайн.',
   serverAgentWaitDeploying:
     'Установка агента идёт ниже. CS2 станет доступен после подключения агента.',
+  serverAgentHubHint:
+    'Агент должен открыть WebSocket на {url}. Если статус зависает в «ожидание» — пробросьте этот порт на ПК с PMatch и переустановите агент.',
   serverCs2BlockedOffline:
     'Агент ещё не онлайн. Сначала закончите деплой агента, потом ставьте CS2.',
   serverHostTitle: 'Хост',
@@ -407,9 +455,10 @@ const ru: Dictionary = {
   serverRecentTasks: 'Недавние задачи',
   serverDeployStarted: 'Деплой агента начат — лог ниже.',
   serverDeployTitle: 'Установка агента',
+  serverDeployTitleServer: 'Установка сервера',
   serverDeployWaiting: 'Ждём вывод установки…',
   serverLiveConsole: 'Live-консоль',
-  serverLiveConsoleHint: 'Поток bootstrap по SSH с хаба',
+  serverLiveConsoleHint: 'Живой вывод установки — строки появляются по мере шагов',
   serverLiveConnected: '● live',
   serverLiveEnded: '● завершено',
   serverPort: 'порт',
@@ -430,8 +479,11 @@ const ru: Dictionary = {
   serverPhaseDisk: 'диск',
   serverPhaseNetwork: 'сеть',
   serverPhaseCredentials: 'учётные данные',
-  serverPhaseAgent: 'агент',
-  serverPhaseDone: 'готово',
+  serverPhaseAgent: 'Скачивание агента',
+  serverPhaseDone: 'Ожидание агента',
+  serverProgressPercent: '{percent}%',
+  serverProgressEta: '≈ {eta} осталось',
+  serverProgressEtaWait: 'Считаем время…',
 
   langEn: 'EN',
   langRu: 'RUS',

@@ -114,6 +114,15 @@ export const zCommand = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('plugin.list'), instanceId: zId }),
 
+  /**
+   * Pull a new agent image and recreate this container. The hub only ever sends
+   * the image configured on the hub (`AGENT_IMAGE`), never free-form panel input.
+   */
+  z.object({
+    type: z.literal('agent.update'),
+    image: z.string().min(1).max(256),
+  }),
+
   /** Indexes the GOTV recordings currently present in the instance volume. */
   z.object({ type: z.literal('demo.list'), instanceId: zId }),
 

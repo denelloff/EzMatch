@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import type { HostInfo } from '@ppanel/protocol';
 import { hasRole, requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { formatBytes, formatRelative } from '@/lib/format';
+import { formatRelative } from '@/lib/format';
 import { getT } from '@/lib/i18n';
 import {
   Badge,
@@ -14,7 +14,10 @@ import {
   buttonClass,
 } from '@/components/ui';
 import { DeployAgentPanel } from '@/components/deploy-agent-panel';
-import { NetworkLoadChart } from '@/components/network-load-chart';
+import { DeleteInstanceButton } from '@/app/admin/instances/delete-instance-button';
+import { LiveHostPanel } from './live-host-panel';
+import { ReinstallAgentButton } from './reinstall-agent';
+import { UpdateAgentButton } from './update-agent-button';
 import { ServerActions } from './server-actions';
 
 export const dynamic = 'force-dynamic';
@@ -51,14 +54,38 @@ export default async function ServerPage({
   const canManage = hasRole(user, 'ADMIN');
   const host = server.hostInfo as HostInfo | null;
   const agentOnline = server.status === 'ONLINE';
-  const canInstallCs2 = canManage && agentOnline && !task;
+  const hubPublicUrl = process.env.HUB_PUBLIC_URL ?? 'ws://…';
+
+  const urlTask = task
+    ? server.tasks.find((entry) => entry.id === task) ?? null
+    : null;
+  const runningTask =
+    server.tasks.find(
+      (entry) => entry.status === 'QUEUED' || entry.status === 'RUNNING',
+    ) ?? null;
+  // Only stream an in-flight job. A finished ?task= left in the URL must not
+  // block CS2 install or show a stuck "queued" console when SSE is blocked.
+  const liveTask =
+    (urlTask &&
+    (urlTask.status === 'QUEUED' || urlTask.status === 'RUNNING')
+      ? urlTask
+      : null) ?? runningTask;
+  const liveTaskId = liveTask?.id ?? null;
+  const deploying = liveTaskId != null;
+  const canInstallCs2 = canManage && agentOnline && !deploying;
+
+  const displayStatus = deploying ? 'PENDING' : server.status;
+  const showLastError =
+    !!server.lastError && server.status === 'ERROR' && !deploying;
+  const waitingForAgent =
+    !agentOnline && (displayStatus === 'PENDING' || deploying);
 
   const statusLabel = {
     ONLINE: t.serverStatusOnline,
     OFFLINE: t.serverStatusOffline,
     PENDING: t.serverStatusPending,
     ERROR: t.serverStatusError,
-  }[server.status];
+  }[displayStatus];
 
   const taskStatusLabel = (status: string) => {
     switch (status) {
@@ -92,7 +119,7 @@ export default async function ServerPage({
             style={{ fontFamily: 'var(--font-display)' }}
           >
             {server.name}
-            <Badge tone={STATUS_TONE[server.status]}>{statusLabel}</Badge>
+            <Badge tone={STATUS_TONE[displayStatus]}>{statusLabel}</Badge>
           </h1>
           <p className="mt-1 text-sm text-ink-400">
             {server.host}:{server.sshPort}
@@ -103,7 +130,7 @@ export default async function ServerPage({
         </div>
 
         {canManage ? (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             {canInstallCs2 ? (
               <Link
                 href={`/admin/servers/${server.id}/instances/new`}
@@ -112,6 +139,19 @@ export default async function ServerPage({
                 {t.serverInstallCs2}
               </Link>
             ) : null}
+            {agentOnline ? (
+              <UpdateAgentButton
+                serverId={server.id}
+                label={t.serverUpdateAgent}
+                confirm={t.serverUpdateAgentConfirm}
+                disabled={deploying}
+              />
+            ) : null}
+            <ReinstallAgentButton
+              serverId={server.id}
+              label={t.serverReinstall}
+              emphasize={showLastError}
+            />
             <ServerActions
               serverId={server.id}
               deleteError={deleteError ?? null}
@@ -130,8 +170,14 @@ export default async function ServerPage({
         ) : null}
       </div>
 
-      {server.lastError ? (
+      {showLastError ? (
         <Notice tone="danger">{server.lastError}</Notice>
+      ) : null}
+
+      {waitingForAgent && !showLastError ? (
+        <Notice tone="warn">
+          {t.serverAgentHubHint.replace('{url}', hubPublicUrl)}
+        </Notice>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -148,7 +194,7 @@ export default async function ServerPage({
                   : t.serverAgentWaitTitle
               }
               description={
-                task
+                deploying
                   ? t.serverAgentWaitDeploying
                   : agentOnline
                     ? t.serverInstancesEmptyDescription
@@ -168,125 +214,86 @@ export default async function ServerPage({
           ) : (
             <ul className="divide-y divide-ink-700/80">
               {server.instances.map((instance) => (
-                <li key={instance.id}>
+                <li
+                  key={instance.id}
+                  className="flex items-center justify-between gap-3 px-5 py-3"
+                >
                   <Link
                     href={`/admin/instances/${instance.id}`}
-                    className="flex items-center justify-between px-5 py-3 transition hover:bg-ink-850"
+                    className="min-w-0 flex-1 transition hover:opacity-90"
                   >
-                    <div>
-                      <p className="text-sm text-ink-100">{instance.name}</p>
-                      <p className="mt-0.5 text-xs text-ink-400">
-                        {t.serverPort} {instance.gamePort} · {t.serverTv}{' '}
-                        {instance.tvPort}
-                        {instance.buildId
-                          ? ` · ${t.serverBuild} ${instance.buildId}`
-                          : ''}
-                      </p>
-                    </div>
+                    <p className="text-sm text-ink-100">{instance.name}</p>
+                    <p className="mt-0.5 text-xs text-ink-400">
+                      {t.serverPort} {instance.gamePort} · {t.serverTv}{' '}
+                      {instance.tvPort}
+                      {instance.buildId
+                        ? ` · ${t.serverBuild} ${instance.buildId}`
+                        : ''}
+                    </p>
+                  </Link>
+                  <div className="flex shrink-0 items-center gap-2">
                     <Badge
                       tone={
                         instance.state === 'RUNNING'
                           ? 'ok'
-                          : instance.state === 'ERROR'
+                          : instance.state === 'ERROR' ||
+                              instance.state === 'CREATING'
                             ? 'danger'
                             : 'neutral'
                       }
                     >
                       {instance.state.toLowerCase()}
                     </Badge>
-                  </Link>
+                    {canManage ? (
+                      <DeleteInstanceButton
+                        instanceId={instance.id}
+                        compact
+                        label={t.instanceDelete}
+                      />
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>
           )}
         </Card>
 
-        <Card>
-          <CardHeader title={t.serverHostTitle} />
-          <dl className="space-y-3 px-5 py-4 text-sm">
-            <Row label={t.serverOs} value={host?.os ?? '—'} />
-            <Row label={t.serverKernel} value={host?.kernel ?? '—'} />
-            <Row label={t.serverArch} value={host?.arch ?? '—'} />
-            <Row label={t.serverCpus} value={host?.cpuCount?.toString() ?? '—'} />
-            <Row label={t.serverMemory} value={formatBytes(host?.totalMemBytes)} />
-            <Row
-              label={t.serverFreeDisk}
-              value={
-                host?.disks?.length
-                  ? host.disks
-                      .map((disk) =>
-                        t.serverFreeDiskFree
-                          .replace('{free}', formatBytes(disk.freeBytes))
-                          .replace('{path}', disk.path),
-                      )
-                      .join(' · ')
-                  : '—'
-              }
-            />
-            <Row label={t.serverDocker} value={host?.dockerVersion ?? '—'} />
-            <Row
-              label={t.serverAgentToken}
-              value={
-                server.agentToken
-                  ? server.agentToken.revokedAt
-                    ? t.serverTokenRevoked
-                    : t.serverTokenUsed
-                        .replace('{prefix}', server.agentToken.tokenPrefix)
-                        .replace(
-                          '{when}',
-                          formatRelative(server.agentToken.lastUsedAt),
-                        )
-                  : t.serverTokenMissing
-              }
-            />
-          </dl>
-
-          {host?.disks?.length ? (
-            <div className="border-t border-ink-700/80 px-5 py-4">
-              <p className="text-xs text-ink-400">{t.serverDisks}</p>
-              <ul className="mt-2 space-y-2">
-                {host.disks.map((disk) => (
-                  <li key={disk.path} className="text-sm">
-                    <div className="flex justify-between text-ink-200">
-                      <span className="console-surface text-xs">{disk.path}</span>
-                      <span className="text-xs">
-                        {t.serverDiskFreeTotal
-                          .replace('{free}', formatBytes(disk.freeBytes))
-                          .replace('{total}', formatBytes(disk.totalBytes))}
-                      </span>
-                    </div>
-                    <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-ink-800">
-                      <div
-                        className="h-full rounded-full bg-brand-500"
-                        style={{
-                          width: `${Math.min(
-                            100,
-                            Math.round(
-                              ((disk.totalBytes - disk.freeBytes) /
-                                Math.max(disk.totalBytes, 1)) *
-                                100,
-                            ),
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          <NetworkLoadChart
-            history={host?.networkHistory}
-            rxBytesPerSec={host?.networkRxBytesPerSec}
-            txBytesPerSec={host?.networkTxBytesPerSec}
-            title={t.serverNetwork}
-            waiting={t.serverNetworkWaiting}
-          />
-        </Card>
+        <LiveHostPanel
+          serverId={server.id}
+          initialHost={host}
+          agentTokenValue={
+            server.agentToken
+              ? server.agentToken.revokedAt
+                ? t.serverTokenRevoked
+                : t.serverTokenUsed
+                    .replace('{prefix}', server.agentToken.tokenPrefix)
+                    .replace(
+                      '{when}',
+                      formatRelative(server.agentToken.lastUsedAt),
+                    )
+              : t.serverTokenMissing
+          }
+          labels={{
+            title: t.serverHostTitle,
+            os: t.serverOs,
+            kernel: t.serverKernel,
+            arch: t.serverArch,
+            cpus: t.serverCpus,
+            memory: t.serverMemory,
+            freeDisk: t.serverFreeDisk,
+            freeDiskFree: t.serverFreeDiskFree,
+            docker: t.serverDocker,
+            agentToken: t.serverAgentToken,
+            disks: t.serverDisks,
+            diskFreeTotal: t.serverDiskFreeTotal,
+            network: t.serverNetwork,
+            networkWaiting: t.serverNetworkWaiting,
+            live: t.serverLiveConnected,
+          }}
+        />
       </div>
 
-      {server.tasks.length > 0 || task ? (
+      {server.tasks.length > 0 || liveTaskId ? (
         <Card>
           <CardHeader title={t.serverRecentTasks} />
           {server.tasks.length > 0 ? (
@@ -295,7 +302,7 @@ export default async function ServerPage({
                 <li
                   key={entry.id}
                   className={`flex items-center justify-between gap-4 px-5 py-3 text-sm ${
-                    task === entry.id ? 'bg-ink-850' : ''
+                    liveTaskId === entry.id ? 'bg-ink-850' : ''
                   }`}
                 >
                   <div className="min-w-0">
@@ -332,11 +339,23 @@ export default async function ServerPage({
         </Card>
       ) : null}
 
-      {task ? (
+      {liveTaskId && liveTask ? (
         <DeployAgentPanel
-          taskId={task}
+          taskId={liveTaskId}
+          initial={{
+            status: liveTask.status,
+            phase: liveTask.phase,
+            percent: liveTask.percent,
+            message: liveTask.message,
+            error: liveTask.error,
+          }}
           labels={{
-            title: t.serverDeployTitle,
+            title:
+              liveTask.type === 'server.agentUpdate'
+                ? t.serverUpdateAgentTitle
+                : liveTask.type.startsWith('instance.')
+                  ? t.serverDeployTitleServer
+                  : t.serverDeployTitle,
             waiting: t.serverDeployWaiting,
             consoleTitle: t.serverLiveConsole,
             consoleHint: t.serverLiveConsoleHint,
@@ -355,18 +374,12 @@ export default async function ServerPage({
             taskTimedOut: t.serverTaskTimedOut,
             taskRunning: t.serverTaskRunning,
             taskQueued: t.serverTaskQueued,
+            progressPercent: t.serverProgressPercent,
+            progressEta: t.serverProgressEta,
+            progressEtaWait: t.serverProgressEtaWait,
           }}
         />
       ) : null}
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4">
-      <dt className="text-xs text-ink-400">{label}</dt>
-      <dd className="truncate text-right text-ink-200">{value}</dd>
     </div>
   );
 }

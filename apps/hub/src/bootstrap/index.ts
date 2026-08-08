@@ -1,4 +1,5 @@
 import { generateAgentToken, hashAgentToken } from '@ppanel/db';
+import { agents } from '../agent/registry.js';
 import type { AgentDeployConfig } from '../config.js';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
@@ -13,8 +14,11 @@ const PHASE_PERCENT: Record<string, number> = {
   network: 55,
   credentials: 65,
   agent: 80,
-  done: 100,
+  done: 95,
 };
+
+/** How long to wait for the agent WebSocket after the container starts. */
+const AGENT_CONNECT_TIMEOUT_MS = 90_000;
 
 export interface BootstrapInput {
   serverId: string;
@@ -38,11 +42,18 @@ export async function bootstrapServer(input: BootstrapInput): Promise<void> {
   const { token, prefix } = generateAgentToken();
 
   try {
+    // Clear the previous failure as soon as a new install starts so the panel
+    // does not keep showing a stale ERROR banner while the task is running.
+    await db().server.update({
+      where: { id: serverId },
+      data: { status: 'PENDING', lastError: null },
+    });
+
     await updateTask(taskId, {
       status: 'RUNNING',
       phase: 'preflight',
-      percent: 5,
-      message: 'Connected over SSH — starting bootstrap',
+      percent: 2,
+      message: `Preparing bootstrap for ${credentials.host}:${credentials.port}…`,
     });
 
     // The token row is written before the script runs. If bootstrap fails
@@ -58,6 +69,11 @@ export async function bootstrapServer(input: BootstrapInput): Promise<void> {
       },
     });
 
+    await updateTask(taskId, {
+      percent: 4,
+      message: `Opening SSH to ${credentials.username}@${credentials.host}:${credentials.port}…`,
+    });
+
     const script = buildBootstrapScript({
       serverId,
       agentToken: token,
@@ -70,9 +86,20 @@ export async function bootstrapServer(input: BootstrapInput): Promise<void> {
       stateVolume: agentConfig.stateVolume,
     });
 
+    // Serialize console updates so lines stay in order on the SSE stream.
+    let logChain: Promise<void> = Promise.resolve();
+    const pushLog = (
+      update: Parameters<typeof updateTask>[1],
+      persist = true,
+    ) => {
+      logChain = logChain
+        .then(() => updateTask(taskId, update, { persist }))
+        .catch(() => undefined);
+    };
+
     const run = await runBootstrapScript(credentials, script, (line) => {
       if (line.kind === 'phase') {
-        void updateTask(taskId, {
+        pushLog({
           phase: line.text,
           percent: PHASE_PERCENT[line.text] ?? null,
           message: describePhase(line.text),
@@ -81,13 +108,16 @@ export async function bootstrapServer(input: BootstrapInput): Promise<void> {
       }
       if (line.kind === 'info' || line.kind === 'raw') {
         log.info({ remote: line.text }, 'bootstrap');
-        void updateTask(taskId, { message: line.text });
+        // Persist only milestones; every line still hits the live console buffer.
+        pushLog({ message: line.text }, line.kind === 'info');
       }
       if (line.kind === 'error') {
         log.error({ remote: line.text }, 'bootstrap failed');
-        void updateTask(taskId, { message: line.text, error: line.text });
+        pushLog({ message: line.text, error: line.text });
       }
     });
+
+    await logChain;
 
     if (run.exitCode !== 0) {
       throw new Error(
@@ -106,17 +136,41 @@ export async function bootstrapServer(input: BootstrapInput): Promise<void> {
     });
 
     await updateTask(taskId, {
+      phase: 'done',
+      percent: 90,
+      message: `Container up — waiting for WebSocket to ${agentConfig.hubPublicUrl}`,
+    });
+
+    const connected = await waitForAgent(
+      serverId,
+      AGENT_CONNECT_TIMEOUT_MS,
+      (secondsLeft) => {
+        void updateTask(taskId, {
+          message: `Waiting for agent at ${agentConfig.hubPublicUrl} (${secondsLeft}s left)`,
+        });
+      },
+    );
+
+    if (!connected) {
+      throw new Error(
+        `Agent container started but never reached the hub at ${agentConfig.hubPublicUrl}. ` +
+          'From the game host that address must be reachable (not 127.0.0.1). ' +
+          'Forward/open the hub port on the PMatch machine, set HUB_PUBLIC_URL to a public ws:// or wss:// URL, then reinstall the agent.',
+      );
+    }
+
+    await updateTask(taskId, {
       status: 'SUCCEEDED',
       phase: 'done',
       percent: 100,
-      message: 'Agent deployed. Waiting for it to connect.',
+      message: 'Agent connected to the hub.',
       error: null,
       result: {
         hostKeyFingerprint: `SHA256:${run.hostKeyFingerprint}`,
         ...run.result,
       },
     });
-    log.info('bootstrap completed');
+    log.info('bootstrap completed — agent online');
   } catch (error) {
     const message =
       error instanceof SshError
@@ -137,6 +191,25 @@ export async function bootstrapServer(input: BootstrapInput): Promise<void> {
   }
 }
 
+export async function waitForAgent(
+  serverId: string,
+  timeoutMs: number,
+  onTick?: (secondsLeft: number) => void,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  let lastReported = -1;
+  while (Date.now() < deadline) {
+    if (agents.get(serverId)) return true;
+    const secondsLeft = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    if (onTick && secondsLeft !== lastReported && secondsLeft % 5 === 0) {
+      lastReported = secondsLeft;
+      onTick(secondsLeft);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  return !!agents.get(serverId);
+}
+
 function describePhase(phase: string): string {
   switch (phase) {
     case 'preflight':
@@ -152,7 +225,7 @@ function describePhase(phase: string): string {
     case 'agent':
       return 'Pulling and starting the agent container';
     case 'done':
-      return 'Agent deployed';
+      return 'Waiting for the agent to connect';
     default:
       return phase;
   }

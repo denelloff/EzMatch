@@ -7,6 +7,7 @@ import { collectHostInfo, freeBytesFor } from './host.js';
 import type { LogServer } from './logs/server.js';
 import { log } from './logger.js';
 import { runInstallSteps, verifyPlugin, writeFakeRconPassword } from './plugins/installer.js';
+import { scheduleAgentUpdate } from './self-update.js';
 
 /** 20 GiB: a CS2 patch is far smaller than the game, but never trivial. */
 const UPDATE_MIN_FREE_BYTES = 21_474_836_480;
@@ -43,6 +44,13 @@ export async function executeCommand(
         sufficient: freeBytes >= command.minFreeBytes,
       };
     }
+
+    case 'agent.update':
+      return scheduleAgentUpdate({
+        containerName: context.config.agentHost,
+        image: command.image,
+        progress: context.progress,
+      });
 
     case 'instance.create': {
       const facts = await dockerFacts();

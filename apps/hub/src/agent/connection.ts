@@ -36,6 +36,7 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 60_000;
 const COMMAND_TIMEOUT_MS: Partial<Record<Command['type'], number>> = {
   'instance.create': 4 * 60 * 60_000,
   'instance.update': 2 * 60 * 60_000,
+  'agent.update': 15 * 60_000,
   'plugin.install': 10 * 60_000,
   'plugin.remove': 5 * 60_000,
   'instance.stop': 5 * 60_000,
