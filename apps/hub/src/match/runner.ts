@@ -753,11 +753,20 @@ class MatchRunner {
 
     // Name-only disconnects (Docker console) — mark every row with that name.
     if (!connected && !player.steamId && player.name) {
-      const result = await db().matchPlayer.updateMany({
-        where: { matchId, name: player.name },
-        data: { connected: false },
+      const players = await db().matchPlayer.findMany({
+        where: { matchId, connected: true },
+        select: { id: true, name: true },
       });
-      if (result.count > 0) this.publish(matchId, { players: true });
+      const needle = player.name.trim().toLowerCase();
+      const ids = players
+        .filter((row) => row.name.trim().toLowerCase() === needle)
+        .map((row) => row.id);
+      if (ids.length === 0) return;
+      await db().matchPlayer.updateMany({
+        where: { id: { in: ids } },
+        data: { connected: false, ready: false },
+      });
+      this.publish(matchId, { players: true });
       return;
     }
 

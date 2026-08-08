@@ -14,8 +14,14 @@ const PLAYER_RE = /"([^"<]+)<(\d+)><([^>]*)><([^>]*)>"/;
 const STEAM3_RE = /^\[U:1:(\d+)\]$/i;
 const STEAM64_INLINE_RE =
   /steamid:(7656\d+)@[^\s]+\s+'([^']+)'/i;
+// CS2 prints several leave shapes: `Dropped client 'x'`, `Dropped "x" from
+// server: …`, `Client "x" disconnected`, and the classic quoted player line.
 const DROPPED_RE =
   /(?:Dropped client|Disconnect client|Dropping client|Kicked)\s+'([^']+)'/i;
+const DROPPED_QUOTED_RE =
+  /Dropped\s+"([^"]+)"\s+from server/i;
+const CLIENT_DISCONNECTED_RE =
+  /Client\s+(?:#?\d+\s+)?"([^"]+)"\s+disconnected/i;
 const SAY_RE =
   /"([^"<]+)<(\d+)><([^>]*)><([^>]*)>"\s+say(?:_team)?\s+"(.*)"/i;
 const CHANGE_TEAM_RE =
@@ -115,7 +121,10 @@ export function gameEventsFromConsoleLine(line: string): GameEvent[] {
     ];
   }
 
-  const dropped = DROPPED_RE.exec(text);
+  const dropped =
+    DROPPED_RE.exec(text) ??
+    DROPPED_QUOTED_RE.exec(text) ??
+    CLIENT_DISCONNECTED_RE.exec(text);
   if (dropped) {
     return [
       event('player_disconnect', {
