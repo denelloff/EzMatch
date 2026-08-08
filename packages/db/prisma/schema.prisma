@@ -185,6 +185,26 @@ model PluginInstall {
   @@map("plugin_installs")
 }
 
+/// Roster identity for matchmaking UI — not the in-match mp_teamname strings.
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  /// Short tag shown on scoreboards (e.g. NAVI).
+  tag       String
+  /// ISO 3166-1 alpha-2, lowercase (de, ru, fi, …).
+  country   String   @db.VarChar(2)
+  /// Public path under /uploads/teams/…, or null for initials-only.
+  logoPath  String?
+  /// Stable key when imported from the CS2 pro preset; null for custom teams.
+  presetKey String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+  @@index([tag])
+  @@map("teams")
+}
+
 enum MatchState {
   DRAFT
   WARMUP
@@ -200,6 +220,8 @@ enum MatchState {
 
 model Match {
   id         String     @id @default(cuid())
+  /// Human-facing sequential id (#1, #2, …).
+  number     Int        @unique @default(autoincrement())
   instanceId String
   title      String
   state      MatchState @default(DRAFT)
@@ -214,13 +236,20 @@ model Match {
 
   maxRounds       Int     @default(24)
   overtimeEnabled Boolean @default(true)
+  /// Total OT rounds per period (MR3 → 6, MR5 → 10). Half = overtimeRounds / 2.
   overtimeRounds  Int     @default(6)
+  /// mp_overtime_startmoney (typically 10000 or 16000).
+  overtimeStartMoney Int  @default(10000)
   knifeRound      Boolean @default(true)
   /// Winner of the knife round: 1, 2 or null.
   knifeWinner     Int?
+  /// Operator confirmed casters are ready; unlocks in-game !ready.
+  streamersReady  Boolean @default(false)
 
   /// Prefix passed to mp_backup_round_file, used to find restore points.
   backupPrefix String
+  /// Join password for this match (`sv_password`). Encrypted at rest.
+  joinPasswordEnc String @default("")
   /// Name handed to `tv_record`, without the .dem extension. Set when the match
   /// goes live, so a demo can be matched back to the match that produced it.
   demoName     String?
@@ -283,6 +312,8 @@ model MatchPlayer {
   assists Int     @default(0)
   damage  Int     @default(0)
   connected Boolean @default(false)
+  /// Player typed !ready during warmup after streamers unlocked ready-up.
+  ready   Boolean @default(false)
 
   match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
@@ -382,4 +413,27 @@ model AuditLog {
   @@index([createdAt])
   @@index([targetType, targetId])
   @@map("audit_logs")
+}
+
+enum MapPool {
+  ACTIVE_DUTY
+  COMPETITIVE
+  CUSTOM
+}
+
+/// Maps offered in match / instance forms. Official pools are seeded; CUSTOM
+/// entries are added from Settings.
+model GameMap {
+  id        String  @id @default(cuid())
+  /// CS2 changelevel name, e.g. de_mirage.
+  name      String  @unique
+  label     String
+  pool      MapPool @default(CUSTOM)
+  enabled   Boolean @default(true)
+  sortOrder Int     @default(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled, sortOrder])
+  @@map("game_maps")
 }

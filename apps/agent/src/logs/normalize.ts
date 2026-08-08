@@ -165,7 +165,12 @@ function toPlayerRef(entity: unknown): PlayerRef | null {
 
   return {
     name: typeof record.name === 'string' ? record.name : 'unknown',
-    steamId: typeof record.steamId64 === 'string' ? record.steamId64 : null,
+    steamId:
+      typeof record.steamId64 === 'string'
+        ? record.steamId64
+        : typeof record.steamId === 'string'
+          ? record.steamId
+          : null,
     side: teamToSide(record.team),
     userId: typeof record.id === 'number' ? record.id : null,
   };
@@ -260,8 +265,22 @@ export function normalizeLine(
   raw: string,
   secrets: readonly string[] = [],
 ): GameEvent | null {
-  const split = splitLine(raw);
-  if (!split) return null;
+  const trimmed = raw.replace(/\r?\n$/, '').trim();
+  if (!trimmed) return null;
+
+  // Docker attach often prints bare CS2 lines without the classic
+  // `L MM/DD/YYYY - HH:MM:SS:` prefix. Those still carry map / round signals
+  // the match runner depends on, so treat them as file-format bodies stamped now.
+  const split =
+    splitLine(trimmed) ??
+    ({
+      ts: new Date(),
+      body: trimmed.startsWith('L ') ? trimmed.slice(2).trim() : trimmed,
+      format: 'file' as const,
+      normalized: trimmed,
+    } satisfies Split);
+
+  if (!split.body) return null;
 
   const safeRaw = redact(split.normalized, secrets);
 

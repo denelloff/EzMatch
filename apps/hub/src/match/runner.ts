@@ -1,4 +1,4 @@
-import type { MatchState } from '@ppanel/db';
+import { decryptSecret, loadMasterKey, type MatchState } from '@ppanel/db';
 import { demoNameFor, type ConsoleCommand, type DemoFile, type GameEvent } from '@ppanel/protocol';
 import { agents } from '../agent/registry.js';
 import { ingest } from '../agent/ingest.js';
@@ -14,6 +14,7 @@ import {
   pauseCommands,
   prepareCommands,
   restoreCommands,
+  sayCommands,
   startRecordingCommands,
   stopRecordingCommands,
   swapCommands,
@@ -21,14 +22,18 @@ import {
   warmupCommands,
   type MatchSettings,
 } from './commands.js';
+import { sideFromTeamNumber } from './console-events.js';
 
 /**
  * How long to wait for the log line that proves a transition happened. On
  * expiry the match stays where it was and says why, instead of pretending the
  * server did something it did not: a match that silently believes it is live
  * while the server is in warmup is worse than one that reports it is stuck.
+ *
+ * Map changes are slow on first load / workshop maps, so this budget is
+ * deliberately longer than a round restart.
  */
-const CONFIRM_TIMEOUT_MS = 45_000;
+const CONFIRM_TIMEOUT_MS = 90_000;
 
 interface Pending {
   toState: MatchState;
@@ -36,6 +41,26 @@ interface Pending {
   accepts: (event: GameEvent) => boolean;
   onCommit?: () => Promise<void>;
   timer: NodeJS.Timeout;
+  resolve: () => void;
+  reject: (error: Error) => void;
+  /** Optional console unsubscribe for map-load fallback. */
+  unsubscribeConsole?: () => void;
+  /** Soft confirm if the map log never shows up after changelevel. */
+  fallbackTimer?: NodeJS.Timeout;
+}
+
+function mapNameMatches(reported: string, wanted: string): boolean {
+  const a = reported.toLowerCase().replace(/^workshop\/\d+\//, '');
+  const b = wanted.toLowerCase();
+  return !a || a === b || a.includes(b) || b.includes(a);
+}
+
+/** Pull a map name out of a raw console line when game-events missed it. */
+function mapFromConsoleLine(line: string): string | null {
+  const match =
+    /(?:Loading map|Started map)\s+"([^"]+)"/i.exec(line) ??
+    /Changed map to\s+"?([^"\s]+)"?/i.exec(line);
+  return match?.[1] ?? null;
 }
 
 export class MatchError extends Error {}
@@ -59,8 +84,30 @@ function settingsOf(match: NonNullable<MatchRow>): MatchSettings {
     maxRounds: match.maxRounds,
     overtimeEnabled: match.overtimeEnabled,
     overtimeRounds: match.overtimeRounds,
+    overtimeStartMoney: match.overtimeStartMoney,
     backupPrefix: match.backupPrefix,
+    joinPassword: match.joinPasswordEnc
+      ? decryptSecret(match.joinPasswordEnc, loadMasterKey())
+      : '',
   };
+}
+
+/** Stable key for MatchPlayer when SteamID64 is missing (bots / early connect). */
+function playerIdentity(player: {
+  steamId: string | null;
+  userId: number | null;
+  name: string;
+}): string | null {
+  if (player.steamId && player.steamId !== 'BOT') {
+    if (/^\[U:1:\d+\]$/i.test(player.steamId)) {
+      const account = /^\[U:1:(\d+)\]$/i.exec(player.steamId)?.[1];
+      if (account) {
+        return String(BigInt('76561197960265728') + BigInt(account));
+      }
+    }
+    return player.steamId;
+  }
+  return null;
 }
 
 class MatchRunner {
@@ -92,6 +139,27 @@ class MatchRunner {
     }
   }
 
+  /** Re-point CS2 HTTP logs at the agent after reconnect / hub restart. */
+  async reapplyLogSinks(serverId: string): Promise<void> {
+    const live = await db().match.findMany({
+      where: {
+        state: { notIn: ['FINISHED', 'CANCELLED', 'DRAFT'] },
+        instance: { serverId, state: 'RUNNING' },
+      },
+      select: { id: true, instanceId: true },
+    });
+    for (const match of live) {
+      try {
+        await this.applyLogSink(match.instanceId, serverId);
+      } catch (error: unknown) {
+        logger.warn(
+          { matchId: match.id, error },
+          'could not re-apply log sink after agent connect',
+        );
+      }
+    }
+  }
+
   // ---------------------------------------------------------------- commands
 
   async prepare(matchId: string): Promise<void> {
@@ -118,19 +186,63 @@ class MatchRunner {
 
     ingest.setActiveMatch(match.instanceId, match.id);
 
-    // The map change is the slow part; confirmation is the map actually coming
-    // up, not the command being accepted.
+    await db().match.update({
+      where: { id: matchId },
+      data: { lastError: null, streamersReady: false },
+    });
+
+    await this.applyLogSink(match.instanceId, match.instance.serverId).catch(
+      (error: unknown) => {
+        logger.warn({ matchId, error }, 'could not apply log sink before prepare');
+      },
+    );
+
+    // Map load confirmation: CS2 often only prints "Loading map" (map_loading),
+    // not always "Started map" / "Changed map". Accept any of them. Console
+    // fallback below covers bare Docker lines the agent may not have eventified.
     await this.sendExpecting(match, prepareCommands(settingsOf(match)), {
       toState: 'WARMUP',
       reason: 'map loaded',
-      accepts: (event) =>
-        (event.kind === 'map_started' || event.kind === 'map_changed') &&
-        String(event.data.map ?? '').includes(match.map),
+      accepts: (event) => {
+        if (
+          event.kind !== 'map_started' &&
+          event.kind !== 'map_changed' &&
+          event.kind !== 'map_loading'
+        ) {
+          return false;
+        }
+        return mapNameMatches(String(event.data.map ?? ''), match.map);
+      },
       onCommit: async () => {
         const fresh = await loadMatch(matchId);
+        // Map change can drop the HTTP log receiver registration.
+        await this.applyLogSink(fresh.instanceId, fresh.instance.serverId).catch(
+          (error: unknown) => {
+            logger.warn({ matchId, error }, 'could not re-apply log sink after map load');
+          },
+        );
         await this.send(fresh, warmupCommands(settingsOf(fresh)));
       },
     });
+  }
+
+  /** Casters confirmed — players may type !ready on the server. */
+  async markStreamersReady(matchId: string): Promise<void> {
+    const match = await loadMatch(matchId);
+    if (match.state !== 'WARMUP') {
+      throw new MatchError('Streamers ready is only used during warmup');
+    }
+    if (match.streamersReady) return;
+
+    await db().match.update({
+      where: { id: matchId },
+      data: { streamersReady: true },
+    });
+    await this.send(
+      match,
+      sayCommands('Streamers are ready. Type !ready when you are ready.'),
+    );
+    this.publish(matchId, { streamersReady: true });
   }
 
   async startKnife(matchId: string): Promise<void> {
@@ -260,6 +372,56 @@ class MatchRunner {
   }
 
   /**
+   * Puts a stuck / warmup match back to DRAFT and runs prepare again so the
+   * operator can re-apply convars and changelevel without creating a duplicate.
+   */
+  async restart(matchId: string): Promise<void> {
+    const match = await loadMatch(matchId);
+    if (match.state === 'FINISHED' || match.state === 'CANCELLED') {
+      throw new MatchError('Finished matches cannot be restarted');
+    }
+    if (
+      match.state !== 'DRAFT' &&
+      match.state !== 'WARMUP' &&
+      match.state !== 'KNIFE' &&
+      match.state !== 'KNIFE_DECISION'
+    ) {
+      throw new MatchError('Restart is only available before the match goes live');
+    }
+
+    this.clearPending(matchId);
+    if (match.state !== 'DRAFT') {
+      await this.send(match, endCommands()).catch(() => undefined);
+      ingest.setActiveMatch(match.instanceId, null);
+      await db().match.update({
+        where: { id: matchId },
+        data: {
+          team1Score: 0,
+          team2Score: 0,
+          knifeWinner: null,
+          lastError: null,
+          startedAt: null,
+          demoName: null,
+          team1Side: 'CT',
+          streamersReady: false,
+        },
+      });
+      await db().matchPlayer.updateMany({
+        where: { matchId },
+        data: { ready: false, connected: false },
+      });
+      await this.transition(matchId, match.state, 'DRAFT', 'restarted by an operator', false);
+    } else {
+      await db().match.update({
+        where: { id: matchId },
+        data: { lastError: null },
+      });
+    }
+
+    await this.prepare(matchId);
+  }
+
+  /**
    * Indexes the GOTV files the instance holds and keeps the ones this match
    * recorded. The demo itself stays on the game host — only its name, size and
    * timestamp are stored, so the index can always be rebuilt from the volume.
@@ -305,19 +467,34 @@ class MatchRunner {
     for (const event of events) {
       const pending = this.pending.get(matchId);
       if (pending?.accepts(event)) {
-        this.clearPending(matchId);
-        const match = await loadMatch(matchId);
-        await this.transition(
-          matchId,
-          match.state,
-          pending.toState,
-          pending.reason,
-          false,
-        );
-        await pending.onCommit?.();
+        await this.fulfillPending(matchId, pending);
       }
 
       await this.applyEvent(matchId, event);
+    }
+  }
+
+  private async fulfillPending(
+    matchId: string,
+    pending: Pending,
+  ): Promise<void> {
+    this.clearPending(matchId);
+    const match = await loadMatch(matchId);
+    await this.transition(
+      matchId,
+      match.state,
+      pending.toState,
+      pending.reason,
+      false,
+    );
+    try {
+      await pending.onCommit?.();
+      pending.resolve();
+    } catch (error) {
+      pending.reject(
+        error instanceof Error ? error : new MatchError(String(error)),
+      );
+      throw error;
     }
   }
 
@@ -351,6 +528,7 @@ class MatchRunner {
 
       case 'player_entered':
       case 'player_connect':
+      case 'player_validated':
         await this.setConnected(matchId, event, true);
         break;
 
@@ -358,9 +536,56 @@ class MatchRunner {
         await this.setConnected(matchId, event, false);
         break;
 
+      case 'player_switched_team':
+        await this.setConnected(matchId, event, true);
+        break;
+
+      case 'player_say':
+        await this.onPlayerSay(matchId, event);
+        break;
+
       default:
         break;
     }
+  }
+
+  private async onPlayerSay(matchId: string, event: GameEvent): Promise<void> {
+    const raw = String(
+      event.data.text ?? event.data.message ?? event.data.msg ?? '',
+    ).trim();
+    if (!raw) return;
+
+    const command = raw.replace(/^[.!\/]/, '').trim().toLowerCase();
+    const readyUp = command === 'ready' || command === 'r';
+    const readyDown = command === 'unready' || command === 'notready';
+    if (!readyUp && !readyDown) return;
+
+    const match = await loadMatch(matchId);
+    if (match.state !== 'WARMUP') return;
+
+    if (!match.streamersReady) {
+      await this.send(match, sayCommands('Streamers are not ready'));
+      return;
+    }
+
+    await this.setConnected(matchId, event, true);
+
+    const player = event.actor;
+    if (!player) return;
+    const steamId = playerIdentity(player);
+    if (!steamId) return;
+
+    await db().matchPlayer.update({
+      where: { matchId_steamId: { matchId, steamId } },
+      data: { ready: readyUp },
+    });
+
+    const name = player.name || 'Player';
+    await this.send(
+      match,
+      sayCommands(readyUp ? `${name} is ready` : `${name} is not ready`),
+    );
+    this.publish(matchId, { players: true });
   }
 
   /**
@@ -467,15 +692,17 @@ class MatchRunner {
     player: GameEvent['actor'],
     delta: { kills?: number; deaths?: number; assists?: number; damage?: number },
   ): Promise<void> {
-    if (!player?.steamId) return;
+    if (!player) return;
+    const steamId = playerIdentity(player);
+    if (!steamId) return;
     const match = await loadMatch(matchId);
     if (match.state !== 'LIVE' && match.state !== 'OVERTIME') return;
 
     await db().matchPlayer.upsert({
-      where: { matchId_steamId: { matchId, steamId: player.steamId } },
+      where: { matchId_steamId: { matchId, steamId } },
       create: {
         matchId,
-        steamId: player.steamId,
+        steamId,
         name: player.name,
         team: this.teamOf(match.team1Side, player.side),
         kills: delta.kills ?? 0,
@@ -501,19 +728,82 @@ class MatchRunner {
     connected: boolean,
   ): Promise<void> {
     const player = event.actor;
-    if (!player?.steamId) return;
+    if (!player) return;
 
-    await db()
-      .matchPlayer.update({
-        where: { matchId_steamId: { matchId, steamId: player.steamId } },
-        data: { connected, name: player.name },
-      })
-      .catch(() => undefined);
+    const match = await loadMatch(matchId);
+    if (
+      match.state === 'FINISHED' ||
+      match.state === 'CANCELLED' ||
+      match.state === 'DRAFT'
+    ) {
+      return;
+    }
+
+    // Prefer side from the event; switched_team often puts the new team in data.
+    const side =
+      player.side ??
+      sideFromTeamNumber(event.data.toTeam) ??
+      (typeof event.data.to === 'string'
+        ? event.data.to
+        : typeof event.data.newTeam === 'string'
+          ? event.data.newTeam
+          : typeof event.data.team === 'string'
+            ? event.data.team
+            : null);
+
+    // Name-only disconnects (Docker console) — mark every row with that name.
+    if (!connected && !player.steamId && player.name) {
+      const result = await db().matchPlayer.updateMany({
+        where: { matchId, name: player.name },
+        data: { connected: false },
+      });
+      if (result.count > 0) this.publish(matchId, { players: true });
+      return;
+    }
+
+    const steamId = playerIdentity(player);
+    if (!steamId) return;
+
+    await db().matchPlayer.upsert({
+      where: { matchId_steamId: { matchId, steamId } },
+      create: {
+        matchId,
+        steamId,
+        name: player.name,
+        team: this.teamOf(match.team1Side, side),
+        connected,
+      },
+      update: {
+        name: player.name,
+        connected,
+        ...(side ? { team: this.teamOf(match.team1Side, side) } : {}),
+        ...(!connected ? { ready: false } : {}),
+      },
+    });
+
+    // Scoreboard only reloads on match SSE ticks — tell it players changed.
+    this.publish(matchId, { players: true });
   }
 
   private teamOf(team1Side: string, side: string | null): number {
-    if (!side || (side !== 'CT' && side !== 'TERRORIST')) return 0;
-    return side === team1Side ? 1 : 2;
+    if (!side) return 0;
+    const normalized =
+      side === 'T' || side === 'Terrorist' || side === 'terrorist'
+        ? 'TERRORIST'
+        : side === 'Counter-Terrorist' || side === 'ct'
+          ? 'CT'
+          : side;
+    if (normalized !== 'CT' && normalized !== 'TERRORIST') return 0;
+    return normalized === team1Side ? 1 : 2;
+  }
+
+  private async applyLogSink(instanceId: string, serverId: string): Promise<void> {
+    await agents.dispatch(serverId, {
+      type: 'logsink.apply',
+      instanceId,
+      logDetail: 3,
+      logItems: false,
+    });
   }
 
   // ------------------------------------------------------------------ helpers
@@ -536,29 +826,96 @@ class MatchRunner {
    * sequences end with a deliberate delay, and the log event that confirms them
    * can land while the agent is still working through the batch; registering
    * afterwards would miss it and leave the match stuck until the timeout.
+   *
+   * Resolves only after the expected log event (or rejects on timeout), so the
+   * panel Start button does not claim success while the match is still DRAFT.
    */
   private async sendExpecting(
     match: NonNullable<MatchRow>,
     commands: ConsoleCommand[],
-    expectation: Omit<Pending, 'timer'>,
+    expectation: Omit<
+      Pending,
+      'timer' | 'resolve' | 'reject' | 'unsubscribeConsole' | 'fallbackTimer'
+    >,
   ): Promise<void> {
-    this.expect(match, expectation);
+    const confirmed = new Promise<void>((resolve, reject) => {
+      this.expect(match, { ...expectation, resolve, reject });
+    });
     try {
       await this.send(match, commands);
     } catch (error) {
+      const pending = this.pending.get(match.id);
       this.clearPending(match.id);
+      pending?.reject(
+        error instanceof Error ? error : new MatchError(String(error)),
+      );
       throw error;
     }
+
+    // changelevel is the last prepare command (with its own delay). If CS2 is
+    // already on that map, or Docker never echoes "Loading map", still move on
+    // so the operator is not stuck in DRAFT forever.
+    if (expectation.toState === 'WARMUP') {
+      const pending = this.pending.get(match.id);
+      if (pending) {
+        pending.fallbackTimer = setTimeout(() => {
+          const current = this.pending.get(match.id);
+          if (!current || current.toState !== 'WARMUP') return;
+          logger.warn(
+            { matchId: match.id, map: match.map },
+            'prepare: confirming WARMUP without map log line',
+          );
+          void this.fulfillPending(match.id, current).catch((error: unknown) => {
+            logger.error({ matchId: match.id, error }, 'prepare fallback failed');
+          });
+        }, 10_000);
+        pending.fallbackTimer.unref?.();
+      }
+    }
+
+    await confirmed;
   }
 
   private expect(
     match: NonNullable<MatchRow>,
-    input: Omit<Pending, 'timer'>,
+    input: Omit<Pending, 'timer' | 'unsubscribeConsole' | 'fallbackTimer'>,
   ): void {
-    this.clearPending(match.id);
+    const previous = this.pending.get(match.id);
+    if (previous) {
+      previous.unsubscribeConsole?.();
+      if (previous.fallbackTimer) clearTimeout(previous.fallbackTimer);
+      clearTimeout(previous.timer);
+      this.pending.delete(match.id);
+      previous.reject(new MatchError('Match action superseded'));
+    }
+
+    // Docker console often prints bare "Loading map" lines that never become
+    // game events (agent drops lines without an L-timestamp). Watch the live
+    // console topic so prepare can still confirm.
+    let unsubscribeConsole: (() => void) | undefined;
+    if (input.toState === 'WARMUP' && input.reason === 'map loaded') {
+      unsubscribeConsole = bus.subscribe(
+        `console:${match.instanceId}`,
+        (data) => {
+          const line = String(
+            data && typeof data === 'object' && 'line' in data
+              ? (data as { line: unknown }).line
+              : '',
+          );
+          const reported = mapFromConsoleLine(line);
+          if (!reported || !mapNameMatches(reported, match.map)) return;
+          const pending = this.pending.get(match.id);
+          if (!pending) return;
+          void this.fulfillPending(match.id, pending).catch((error: unknown) => {
+            logger.error({ matchId: match.id, error }, 'console map confirm failed');
+          });
+        },
+      );
+    }
 
     const timer = setTimeout(() => {
-      this.pending.delete(match.id);
+      const pending = this.pending.get(match.id);
+      this.clearPending(match.id);
       const message = `The server did not report "${input.reason}" within ${
         CONFIRM_TIMEOUT_MS / 1000
       }s. The match is still ${match.state.toLowerCase()}.`;
@@ -567,15 +924,20 @@ class MatchRunner {
         .match.update({ where: { id: match.id }, data: { lastError: message } })
         .catch(() => undefined);
       this.publish(match.id, { error: message });
+      pending?.reject(new MatchError(message));
     }, CONFIRM_TIMEOUT_MS);
     timer.unref?.();
 
-    this.pending.set(match.id, { ...input, timer });
+    this.pending.set(match.id, { ...input, timer, unsubscribeConsole });
   }
 
   private clearPending(matchId: string): void {
     const pending = this.pending.get(matchId);
-    if (pending) clearTimeout(pending.timer);
+    if (pending) {
+      clearTimeout(pending.timer);
+      if (pending.fallbackTimer) clearTimeout(pending.fallbackTimer);
+      pending.unsubscribeConsole?.();
+    }
     this.pending.delete(matchId);
   }
 

@@ -12,6 +12,8 @@ const actionBody = z.object({
     'unpause',
     'restore',
     'cancel',
+    'restart',
+    'streamers_ready',
   ]),
   choice: z.enum(['stay', 'swap']).optional(),
   file: z.string().max(128).optional(),
@@ -57,6 +59,12 @@ export function registerMatchRoutes(app: HubApp): void {
             break;
           case 'cancel':
             await matches.cancel(matchId);
+            break;
+          case 'restart':
+            await matches.restart(matchId);
+            break;
+          case 'streamers_ready':
+            await matches.markStreamersReady(matchId);
             break;
         }
         return reply.send({ ok: true });

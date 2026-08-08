@@ -1,18 +1,17 @@
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth';
+import { requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { scoreboardPlayersVisible } from '@/lib/scoreboard-players';
 import { MatchScoreboard } from './scoreboard-view';
 
 export const dynamic = 'force-dynamic';
 
-/** Public live scorebot — no operator tools. */
-export default async function PublicMatchScoreboardPage({
+export default async function AdminMatchScoreboardPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireUser();
+  await requireRole('OPERATOR');
   const { id } = await params;
 
   const match = await prisma.match.findUnique({
@@ -37,6 +36,7 @@ export default async function PublicMatchScoreboardPage({
     deaths: p.deaths,
     damage: p.damage,
     connected: p.connected,
+    ready: p.ready,
   });
 
   return (

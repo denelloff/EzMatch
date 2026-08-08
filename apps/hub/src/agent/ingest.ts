@@ -2,6 +2,7 @@ import type { GameEvent } from '@ppanel/protocol';
 import { bus } from '../bus.js';
 import { db } from '../db.js';
 import { logger } from '../logger.js';
+import { gameEventsFromConsoleLine } from '../match/console-events.js';
 
 /**
  * A busy server emits console output and game events far faster than one row
@@ -79,10 +80,16 @@ class Ingest {
 
   console(instanceId: string, ts: string, line: string): void {
     bus.publish(`console:${instanceId}`, { ts, line });
+
+    // Fallback when logaddress HTTP is down: promote useful console lines.
+    const synthetic = gameEventsFromConsoleLine(line);
+    if (synthetic.length > 0) {
+      this.events(instanceId, synthetic);
+    }
+
     if (this.consoleBuffer.length >= MAX_BUFFER) {
       this.consoleBuffer.shift();
       this.droppedConsole += 1;
-      return;
     }
     this.consoleBuffer.push({ instanceId, ts: new Date(ts), line });
   }

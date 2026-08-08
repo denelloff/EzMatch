@@ -79,6 +79,7 @@ export async function executeCommand(
 
     case 'instance.start':
       await context.instances.start(command.instanceId);
+      await applyLogSink(command.instanceId, 3, false, context);
       await enforceNoBotsIfConfigured(command.instanceId, context);
       return context.instances.snapshot(context.instances.get(command.instanceId));
 
@@ -88,6 +89,7 @@ export async function executeCommand(
 
     case 'instance.restart':
       await context.instances.restart(command.instanceId);
+      await applyLogSink(command.instanceId, 3, false, context);
       await enforceNoBotsIfConfigured(command.instanceId, context);
       return context.instances.snapshot(context.instances.get(command.instanceId));
 

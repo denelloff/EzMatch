@@ -3,9 +3,9 @@ import type { ConsoleCommand } from '@ppanel/protocol';
 /**
  * Console sequences that drive a match without a server plugin.
  *
- * Everything here is a stock convar. PPanel deliberately does not depend on
+ * Everything here is a stock convar. eZ-Match deliberately does not depend on
  * get5 or MatchZy: those are Metamod/CounterStrikeSharp plugins, and those are
- * exactly what breaks after a CS2 update. A match must still be runnable on a
+ * exactly what break after a CS2 update. A match must still be runnable on a
  * server with no plugins at all.
  *
  * Team 1 is the side that starts as CT, matching `mp_teamname_1`.
@@ -18,7 +18,10 @@ export interface MatchSettings {
   maxRounds: number;
   overtimeEnabled: boolean;
   overtimeRounds: number;
+  overtimeStartMoney: number;
   backupPrefix: string;
+  /** Applied as sv_password (empty string clears the join password). */
+  joinPassword: string;
 }
 
 function cmd(command: string, delayMs = 0): ConsoleCommand {
@@ -44,7 +47,7 @@ export function prepareCommands(settings: MatchSettings): ConsoleCommand[] {
     cmd(`mp_maxrounds ${settings.maxRounds}`),
     cmd(`mp_overtime_enable ${settings.overtimeEnabled ? 1 : 0}`),
     cmd(`mp_overtime_maxrounds ${settings.overtimeRounds}`),
-    cmd('mp_overtime_startmoney 12500'),
+    cmd(`mp_overtime_startmoney ${settings.overtimeStartMoney}`),
     cmd('mp_halftime 1'),
     cmd('mp_match_can_clinch 1'),
     cmd('mp_match_end_restart 0'),
@@ -54,7 +57,7 @@ export function prepareCommands(settings: MatchSettings): ConsoleCommand[] {
     cmd(`mp_backup_round_file ${quoted(settings.backupPrefix)}`),
     cmd('mp_backup_round_file_pattern "%prefix%_round%round%.txt"'),
     // A warmup that ends on its own would start the match before both teams are
-    // in, so the timer is frozen and only PPanel ends it.
+    // in, so the timer is frozen and only eZ-Match ends it.
     cmd('mp_warmup_pausetimer 1'),
     cmd('mp_warmuptime 9999'),
     cmd('mp_do_warmup_period 1'),
@@ -64,6 +67,7 @@ export function prepareCommands(settings: MatchSettings): ConsoleCommand[] {
     // changelevel below or nothing can be recorded for this match.
     cmd('tv_enable 1'),
     cmd('tv_autorecord 0'),
+    cmd(`sv_password ${quoted(settings.joinPassword)}`),
     cmd(`changelevel ${settings.map}`, 3000),
   ];
 }
@@ -76,6 +80,7 @@ export function warmupCommands(settings: MatchSettings): ConsoleCommand[] {
     cmd(`mp_maxrounds ${settings.maxRounds}`),
     cmd(`mp_overtime_enable ${settings.overtimeEnabled ? 1 : 0}`),
     cmd(`mp_overtime_maxrounds ${settings.overtimeRounds}`),
+    cmd(`mp_overtime_startmoney ${settings.overtimeStartMoney}`),
     cmd('mp_autoteambalance 0'),
     cmd('mp_limitteams 0'),
     cmd('mp_warmup_pausetimer 1'),
@@ -83,6 +88,7 @@ export function warmupCommands(settings: MatchSettings): ConsoleCommand[] {
     cmd('mp_warmup_start'),
     cmd('mp_backup_round_auto 1'),
     cmd(`mp_backup_round_file ${quoted(settings.backupPrefix)}`),
+    cmd(`sv_password ${quoted(settings.joinPassword)}`),
   ];
 }
 
@@ -136,6 +142,8 @@ export function liveCommands(settings: MatchSettings): ConsoleCommand[] {
     cmd(`mp_maxrounds ${settings.maxRounds}`),
     cmd('mp_halftime 1'),
     cmd(`mp_overtime_enable ${settings.overtimeEnabled ? 1 : 0}`),
+    cmd(`mp_overtime_maxrounds ${settings.overtimeRounds}`),
+    cmd(`mp_overtime_startmoney ${settings.overtimeStartMoney}`),
     cmd('mp_unpause_match'),
     cmd('mp_warmup_end', 1000),
     // Three restarts: the first two clear scores and inventories, the third is
@@ -170,19 +178,17 @@ export function unpauseCommands(): ConsoleCommand[] {
   return [cmd('mp_unpause_match')];
 }
 
+export function sayCommands(message: string): ConsoleCommand[] {
+  return [cmd(`say ${quoted(message)}`)];
+}
+
 export function listBackupsCommands(): ConsoleCommand[] {
   return [cmd('mp_backup_restore_list_files')];
 }
 
-/**
- * Restoring is cheat-flagged, so sv_cheats has to be on for exactly the length
- * of the restore and no longer: a match played with sv_cheats 1 is not a match.
- */
 export function restoreCommands(file: string): ConsoleCommand[] {
   return [
-    cmd('sv_cheats 1'),
-    cmd(`mp_backup_restore_load_file ${quoted(file)}`, 1500),
-    cmd('sv_cheats 0'),
+    cmd(`mp_backup_restore_load_file ${quoted(file)}`, 500),
     cmd('mp_pause_match'),
   ];
 }

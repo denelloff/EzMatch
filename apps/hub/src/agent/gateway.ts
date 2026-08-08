@@ -9,6 +9,7 @@ import { db } from '../db.js';
 import { mergeServerHostInfo } from '../host-info.js';
 import { logger } from '../logger.js';
 import { updateTask } from '../tasks.js';
+import { matches } from '../match/runner.js';
 import { AgentConnection } from './connection.js';
 import { ingest } from './ingest.js';
 import { agents } from './registry.js';
@@ -179,6 +180,9 @@ async function handleMessage(
       bus.publish(`server:${serverId}`, {
         status: 'ONLINE',
         host,
+      });
+      void matches.reapplyLogSinks(serverId).catch((error: unknown) => {
+        logger.warn({ serverId, error }, 'log sink refresh after hello failed');
       });
       break;
     }
