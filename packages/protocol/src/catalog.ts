@@ -20,7 +20,7 @@ const GAME_DIR = 'game/csgo';
 
 export const METAMOD_BUILD = '2.0.0-git1410';
 export const COUNTERSTRIKESHARP_VERSION = '1.0.371';
-export const FAKE_RCON_VERSION = '1.2.8';
+export const FAKE_RCON_VERSION = '1.3.0';
 export const EZ_CSAY_VERSION = '0.1.0';
 /** SHA-256 of plugins/ez-csay/dist/EzCSay.zip */
 export const EZ_CSAY_ZIP_SHA256 =
@@ -109,7 +109,7 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
         url: `https://github.com/Salvatore-Als/cs2-fake-rcon/releases/download/${FAKE_RCON_VERSION}/linux.tar.gz`,
         archive: 'tar.gz',
         sha256:
-          'c55a2fc282923b3f701b360b721c70476e8f5778f5ff96c0738585d6d8ed3cec',
+          'f68d75a86bdaaa7c804876607e5fc9d73bb60b7455481d8ab63921f9b1480392',
         dest: GAME_DIR,
         stripComponents: 0,
       },
@@ -121,8 +121,9 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
         path: `${GAME_DIR}/addons/metamod/fake_rcon.vdf`,
       },
     ],
+    // meta list shows GetName() ("Fake RCON"), not the VDF alias.
     verifyCommand: 'meta list',
-    verifyExpect: 'fake_rcon',
+    verifyExpect: 'Fake RCON',
   },
 
   ez_csay: {
@@ -135,9 +136,10 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
         path: `${GAME_DIR}/addons/counterstrikesharp/plugins/EzCSay`,
       },
       {
-        // Checked-in zip from plugins/ez-csay/dist (also published as ez-csay-v* releases).
+        // Published by .github/workflows/publish-ez-csay.yml (tag ez-csay-v*).
+        // Repo was renamed PMatch → EzMatch; keep the release URL on EzMatch.
         kind: 'download-extract',
-        url: `https://github.com/denelloff/PMatch/raw/publish-agent/plugins/ez-csay/dist/EzCSay.zip`,
+        url: `https://github.com/denelloff/EzMatch/releases/download/ez-csay-v${EZ_CSAY_VERSION}/EzCSay.zip`,
         archive: 'zip',
         sha256: EZ_CSAY_ZIP_SHA256,
         dest: `${GAME_DIR}/addons/counterstrikesharp/plugins/EzCSay`,

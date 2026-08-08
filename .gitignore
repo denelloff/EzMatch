@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# Keep the published EzCSay zip in-repo (catalog pins its SHA-256).
+!plugins/ez-csay/dist/
+!plugins/ez-csay/dist/**
 build/
 .next/
 out/

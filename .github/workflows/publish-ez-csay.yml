@@ -1,0 +1,67 @@
+name: Publish ez-csay plugin
+
+on:
+  push:
+    paths:
+      - 'plugins/ez-csay/**'
+      - '.github/workflows/publish-ez-csay.yml'
+    branches: [main, publish-agent]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build plugin
+        working-directory: plugins/ez-csay
+        run: |
+          dotnet restore
+          dotnet publish -c Release -o ./publish
+
+      - name: Pack zip
+        working-directory: plugins/ez-csay
+        run: |
+          mkdir -p dist
+          cp publish/EzCSay.dll dist/EzCSay.dll
+          cd dist
+          zip -9 EzCSay.zip EzCSay.dll
+          sha256sum EzCSay.zip | tee EzCSay.zip.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EzCSay
+          path: |
+            plugins/ez-csay/dist/EzCSay.zip
+            plugins/ez-csay/dist/EzCSay.zip.sha256
+            plugins/ez-csay/dist/EzCSay.dll
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(grep -oP '(?<=<Version>)[^<]+' plugins/ez-csay/EzCSay.csproj)
+          TAG="ez-csay-v${VERSION}"
+          # Catalog pins the zip checksum. Do not recreate an existing tag/release
+          # (a rebuild would change the hash and break installs until the catalog
+          # is bumped). Bump <Version> in EzCSay.csproj for a new release.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; skipping recreate"
+            exit 0
+          fi
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
+          gh release create "$TAG" \
+            plugins/ez-csay/dist/EzCSay.zip \
+            plugins/ez-csay/dist/EzCSay.dll \
+            --title "eZ-Match CSay ${VERSION}" \
+            --notes "Branded [EZ-MATCH] colored chat for CS2 (CounterStrikeSharp)."
