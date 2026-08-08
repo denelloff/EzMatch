@@ -21,10 +21,10 @@ const GAME_DIR = 'game/csgo';
 export const METAMOD_BUILD = '2.0.0-git1410';
 export const COUNTERSTRIKESHARP_VERSION = '1.0.371';
 export const FAKE_RCON_VERSION = '1.3.0';
-export const EZ_CSAY_VERSION = '0.1.0';
+export const EZ_CSAY_VERSION = '0.1.1';
 /** SHA-256 of plugins/ez-csay/dist/EzCSay.zip */
 export const EZ_CSAY_ZIP_SHA256 =
-  '9a7bbeae178800be02a82cef496f0ecdd88140ca4f55874574119db80960d00a';
+  'd054a24efd149a2e9d9acfd467528a3f55f9aeb79c31d9d9234301314a8b2131';
 
 export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
   metamod: {
@@ -152,8 +152,9 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
         path: `${GAME_DIR}/addons/counterstrikesharp/plugins/EzCSay`,
       },
     ],
-    verifyCommand: null,
-    verifyExpect: null,
+    // CSS plugins do not appear in `meta list` — only under CounterStrikeSharp.
+    verifyCommand: 'css_plugins list',
+    verifyExpect: 'eZ-Match CSay',
   },
 };
 
@@ -203,9 +204,9 @@ export const PLUGIN_DESCRIPTIONS: PluginCatalogEntry[] = [
     name: 'eZ-Match CSay',
     version: EZ_CSAY_VERSION,
     summary:
-      'Branded [EZ-MATCH] chat from the server console, with optional {green}/{yellow} color tags (csay / ezsay).',
+      'Branded [EZ-MATCH] chat from the server console, with optional {green}/{yellow} color tags (csay / ezsay). Check with css_plugins list (not meta list).',
     caution:
-      'Requires CounterStrikeSharp. After a CS2/CSS update it may need a rebuild — plain say still works without it.',
+      'Requires CounterStrikeSharp. It will not show in meta list — use css_plugins list. After a CS2/CSS update it may need a rebuild.',
     requires: ['counterstrikesharp'],
   },
 ];

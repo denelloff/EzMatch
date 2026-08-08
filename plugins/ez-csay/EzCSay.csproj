@@ -6,7 +6,7 @@
     <OutputType>Library</OutputType>
     <AssemblyName>EzCSay</AssemblyName>
     <RootNamespace>EzCSay</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 

@@ -1,6 +1,6 @@
 # eZ-Match CSay
 
-CounterStrikeSharp plugin that brands server console chat as **`[EZ-MATCH]`** and supports `{green}` / `{yellow}` color tags (same idea as ColorSay).
+CounterStrikeSharp plugin by **denello** that brands server console chat as **`[EZ-MATCH]`** and supports `{green}` / `{yellow}` color tags (same idea as ColorSay).
 
 ## Commands
 
@@ -16,6 +16,8 @@ Player `say` is untouched.
 Via the panel plugin catalog (**eZ-Match CSay**, requires CounterStrikeSharp), or copy `EzCSay.dll` to:
 
 `game/csgo/addons/counterstrikesharp/plugins/EzCSay/EzCSay.dll`
+
+Verify with **`css_plugins list`** (not `meta list` — that only shows Metamod plugins like Fake RCON / CounterStrikeSharp).
 
 ## Build
 

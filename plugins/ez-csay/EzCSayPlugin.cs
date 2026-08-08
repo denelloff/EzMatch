@@ -15,8 +15,8 @@ namespace EzCSay;
 public class EzCSayPlugin : BasePlugin
 {
     public override string ModuleName => "eZ-Match CSay";
-    public override string ModuleAuthor => "eZ-Match";
-    public override string ModuleVersion => "0.1.0";
+    public override string ModuleAuthor => "denello";
+    public override string ModuleVersion => "0.1.1";
     public override string ModuleDescription =>
         "Colored [EZ-MATCH] chat announcements from the server console.";
 
