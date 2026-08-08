@@ -140,7 +140,7 @@ export const PLUGIN_DESCRIPTIONS: PluginCatalogEntry[] = [
     summary:
       'C# scripting framework. Install the with-runtime build, which ships the .NET runtime the container lacks.',
     caution:
-      'The most fragile piece after a CS2 patch. PPanel does not need it to run matches; add it only if you run C# plugins.',
+      'Links against CS2 binaries. A Valve patch often makes it segfault on boot (cs2.sh Segmentation fault) until a newer build is pinned. PPanel matches do not need it — remove it if the server will not start.',
     requires: ['metamod'],
   },
   {

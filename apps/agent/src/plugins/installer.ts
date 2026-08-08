@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { dirname, posix } from 'node:path';
 import type Docker from 'dockerode';
 import type { InstallStep, PluginSpec } from '@ppanel/protocol';
-import { docker } from '../docker/client.js';
+import { docker, pullImage } from '../docker/client.js';
 import { putFiles, readTextFile, unpackArchive } from '../docker/archive.js';
 import { CS2_ROOT, resolveInstallPath } from '../docker/paths.js';
 import { log } from '../logger.js';
@@ -250,6 +250,19 @@ async function execInContainer(
   container: Docker.Container,
   command: string[],
 ): Promise<string> {
+  const info = await container.inspect();
+  if (info.State.Running) {
+    return execOnRunningContainer(container, command);
+  }
+  // Crash-loop / stopped CS2 still needs plugin uninstall (CSS segfault leaves
+  // the container exited; docker exec then fails with 409).
+  return execViaVolumeHelper(info, command);
+}
+
+async function execOnRunningContainer(
+  container: Docker.Container,
+  command: string[],
+): Promise<string> {
   const exec = await container.exec({
     Cmd: command,
     AttachStdout: true,
@@ -272,6 +285,49 @@ async function execInContainer(
     );
   }
   return output;
+}
+
+/**
+ * Runs a command against the CS2 data volume while the game container is stopped.
+ * Reuses Alpine (already pulled for disk probes) so we do not need a second image.
+ */
+async function execViaVolumeHelper(
+  info: Docker.ContainerInspectInfo,
+  command: string[],
+): Promise<string> {
+  const binds = info.HostConfig?.Binds ?? [];
+  if (binds.length === 0) {
+    throw new Error(
+      'Cannot change files while the CS2 container is stopped: no volume binds found',
+    );
+  }
+
+  const image = process.env.PPANEL_DISK_PROBE_IMAGE ?? 'alpine:3.20';
+  try {
+    await docker.getImage(image).inspect();
+  } catch {
+    await pullImage(image);
+  }
+
+  const helper = await docker.createContainer({
+    Image: image,
+    Cmd: command,
+    User: '0',
+    HostConfig: {
+      Binds: binds,
+      AutoRemove: true,
+      NetworkMode: 'none',
+    },
+  });
+
+  await helper.start();
+  const result = await helper.wait();
+  if (result.StatusCode !== 0) {
+    throw new Error(
+      `${command.join(' ')} failed in volume helper with exit code ${result.StatusCode}`,
+    );
+  }
+  return '';
 }
 
 export interface VerifyResult {
