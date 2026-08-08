@@ -12,6 +12,7 @@ import {
   docker,
   ensureNetwork,
   ensureVolume,
+  isAlreadyInState,
   isNotFound,
   pullImage,
 } from './client.js';
@@ -397,9 +398,14 @@ export class InstanceManager {
   async start(instanceId: string): Promise<void> {
     const instance = this.get(instanceId);
     this.setState(instance, 'starting');
-    await docker.getContainer(instance.containerName).start();
+    try {
+      await docker.getContainer(instance.containerName).start();
+    } catch (error) {
+      // 304 = already running; treat as success so restart/plugin install can continue.
+      if (!isAlreadyInState(error)) throw error;
+    }
     await this.refreshBuildId(instance);
-    void instance.console.start();
+    await this.attachConsole(instance);
     this.setState(instance, 'running');
   }
 
@@ -411,7 +417,7 @@ export class InstanceManager {
       await docker.getContainer(instance.containerName).stop({ t: timeoutSec });
     } catch (error) {
       // 304 means it was already stopped, which is the state we wanted.
-      if ((error as { statusCode?: number }).statusCode !== 304) throw error;
+      if (!isAlreadyInState(error) && !isNotFound(error)) throw error;
     }
     this.setState(instance, 'stopped');
   }
@@ -419,6 +425,20 @@ export class InstanceManager {
   async restart(instanceId: string): Promise<void> {
     await this.stop(instanceId, 30);
     await this.start(instanceId);
+  }
+
+  /** Attach console and wait until the stream is ready (or give up). */
+  private async attachConsole(
+    instance: ManagedInstance,
+    timeoutMs = 60_000,
+  ): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await instance.console.start();
+      if (instance.console.isAttached) return;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    // Best-effort: callers that need console will fail with a clear error.
   }
 
   async remove(

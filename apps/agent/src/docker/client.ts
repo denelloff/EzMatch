@@ -80,6 +80,17 @@ export async function pullImage(
   });
 }
 
+export function dockerStatusCode(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const e = error as { statusCode?: number; status?: number };
+  return e.statusCode ?? e.status;
+}
+
 export function isNotFound(error: unknown): boolean {
-  return (error as { statusCode?: number })?.statusCode === 404;
+  return dockerStatusCode(error) === 404;
+}
+
+/** Docker returns 304 when start/stop is a no-op (already in that state). */
+export function isAlreadyInState(error: unknown): boolean {
+  return dockerStatusCode(error) === 304;
 }

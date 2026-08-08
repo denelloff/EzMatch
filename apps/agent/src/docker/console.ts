@@ -158,8 +158,10 @@ export class ConsoleSession {
 
   /** Writes a command to the server console. */
   async send(command: string): Promise<void> {
-    if (!this.isAttached) {
+    // After restart, attach can lag a few seconds behind State.Running.
+    for (let attempt = 0; attempt < 5 && !this.isAttached; attempt++) {
       await this.attach();
+      if (!this.isAttached) await delay(1000);
     }
     if (!this.stream) {
       throw new Error('Console is not attached; the container may be stopped');

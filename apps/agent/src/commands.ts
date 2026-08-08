@@ -238,12 +238,20 @@ async function installPlugins(
   context.progress('installing-plugins', 'Restarting to load the plugins', null);
   await context.instances.restart(instanceId);
 
+  // CS2 + Metamod need wall-clock time after start before console answers.
+  context.progress('verifying', 'Waiting for server console after restart', null);
+  await waitForConsoleReady(instance, 90_000);
+
   for (const plugin of plugins) {
     if (!plugin.verifyCommand) continue;
     context.progress('verifying', `Checking ${plugin.id}`, null);
 
-    const result = await verifyPlugin(plugin, (command, captureMs) =>
-      instance.console.sendAndCapture([{ command, delayMs: 0 }], captureMs),
+    const result = await verifyPluginWithRetry(
+      plugin,
+      (command, captureMs) =>
+        instance.console.sendAndCapture([{ command, delayMs: 0 }], captureMs),
+      120_000,
+      (msg) => context.progress('verifying', msg, null),
     );
     if (!result.ok) {
       throw new Error(
@@ -266,6 +274,57 @@ async function readContainerEnv(
     if (entry.startsWith(prefix)) return entry.slice(prefix.length);
   }
   return null;
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
+/** After restart, wait until the console attach stream is usable. */
+async function waitForConsoleReady(
+  instance: { console: { start: () => Promise<void>; isAttached: boolean } },
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await instance.console.start();
+    if (instance.console.isAttached) {
+      // Extra settle time so CS2 finishes early boot before we spam meta commands.
+      await sleep(8_000);
+      return;
+    }
+    await sleep(1_000);
+  }
+  throw new Error('Console is not attached; the container may be stopped');
+}
+
+async function verifyPluginWithRetry(
+  plugin: PluginSpec,
+  runConsole: (command: string, captureMs: number) => Promise<string[]>,
+  timeoutMs: number,
+  onProgress: (message: string) => void,
+): Promise<{ ok: boolean; output: string }> {
+  const deadline = Date.now() + timeoutMs;
+  let last: { ok: boolean; output: string } = { ok: false, output: '' };
+
+  while (Date.now() < deadline) {
+    try {
+      last = await verifyPlugin(plugin, runConsole);
+      if (last.ok) return last;
+      onProgress(
+        `Waiting for ${plugin.id} to load (${plugin.verifyCommand})…`,
+      );
+    } catch (error) {
+      last = {
+        ok: false,
+        output: error instanceof Error ? error.message : String(error),
+      };
+      onProgress(`Console not ready yet for ${plugin.id}; retrying…`);
+    }
+    await sleep(5_000);
+  }
+
+  return last;
 }
 
 /**
