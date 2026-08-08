@@ -52,6 +52,12 @@ export interface ManagedInstance {
   /** Values masked out of console output and logs. */
   secrets: string[];
   autoRestart: boolean;
+  /**
+   * Operator intent: true after create/start/restart, false after stop/remove.
+   * Combined with autoRestart so an unexpected crash brings the server back,
+   * but a deliberate Stop leaves it down.
+   */
+  desiredRunning: boolean;
 }
 
 export type InstanceChangeListener = (snapshot: InstanceSnapshot) => void;
@@ -73,6 +79,10 @@ export class InstanceManager {
   private readonly instances = new Map<string, ManagedInstance>();
   private readonly listeners = new Set<InstanceChangeListener>();
   private readonly consoleListeners = new Set<ConsoleLineListener>();
+  private readonly autoRestarting = new Set<string>();
+  /** Suppress crash auto-restart while stop/restart/update owns the lifecycle. */
+  private readonly lifecycleQuiet = new Set<string>();
+  private eventsStop: (() => void) | null = null;
 
   constructor(private readonly config: AgentConfig) {}
 
@@ -87,6 +97,19 @@ export class InstanceManager {
    */
   onConsoleLine(listener: ConsoleLineListener): void {
     this.consoleListeners.add(listener);
+  }
+
+  /** Watch Docker die/oom/start so the panel state matches reality. */
+  startEventWatch(): void {
+    if (this.eventsStop) return;
+    this.eventsStop = watchManagedContainerEvents((event) => {
+      void this.handleContainerEvent(event);
+    });
+  }
+
+  stopEventWatch(): void {
+    this.eventsStop?.();
+    this.eventsStop = null;
   }
 
   private wireConsole(instance: ManagedInstance): void {
@@ -153,6 +176,7 @@ export class InstanceManager {
         console: new ConsoleSession(instanceId, containerName),
         secrets: secretsFromEnv(details?.Config.Env ?? []),
         autoRestart: true,
+        desiredRunning: Boolean(details?.State.Running),
       };
       instance.console.setSecrets(instance.secrets);
 
@@ -225,6 +249,7 @@ export class InstanceManager {
       console: new ConsoleSession(instanceId, containerName),
       secrets,
       autoRestart: true,
+      desiredRunning: true,
     };
     instance.console.setSecrets(secrets);
     this.instances.set(instanceId, instance);
@@ -397,6 +422,7 @@ export class InstanceManager {
 
   async start(instanceId: string): Promise<void> {
     const instance = this.get(instanceId);
+    instance.desiredRunning = true;
     this.setState(instance, 'starting');
     try {
       await docker.getContainer(instance.containerName).start();
@@ -404,6 +430,7 @@ export class InstanceManager {
       // 304 = already running; treat as success so restart/plugin install can continue.
       if (!isAlreadyInState(error)) throw error;
     }
+    instance.startedAt = new Date().toISOString();
     await this.refreshBuildId(instance);
     await this.attachConsole(instance);
     this.setState(instance, 'running');
@@ -411,6 +438,8 @@ export class InstanceManager {
 
   async stop(instanceId: string, timeoutSec: number): Promise<void> {
     const instance = this.get(instanceId);
+    this.lifecycleQuiet.add(instanceId);
+    instance.desiredRunning = false;
     this.setState(instance, 'stopping');
     instance.console.stop();
     try {
@@ -418,16 +447,40 @@ export class InstanceManager {
     } catch (error) {
       // 304 means it was already stopped, which is the state we wanted.
       if (!isAlreadyInState(error) && !isNotFound(error)) throw error;
+    } finally {
+      this.releaseLifecycleQuiet(instanceId);
     }
+    instance.startedAt = null;
     this.setState(instance, 'stopped');
   }
 
   async restart(instanceId: string): Promise<void> {
-    await this.stop(instanceId, 30);
-    await this.start(instanceId);
+    const instance = this.get(instanceId);
+    this.lifecycleQuiet.add(instanceId);
+    try {
+      instance.desiredRunning = true;
+      instance.console.stop();
+      this.setState(instance, 'stopping');
+      try {
+        await docker.getContainer(instance.containerName).stop({ t: 30 });
+      } catch (error) {
+        if (!isAlreadyInState(error) && !isNotFound(error)) throw error;
+      }
+      instance.desiredRunning = true;
+      await this.start(instanceId);
+    } finally {
+      this.releaseLifecycleQuiet(instanceId);
+    }
   }
 
-  /** Attach console and wait until the stream is ready (or give up). */
+  private releaseLifecycleQuiet(instanceId: string): void {
+    // Die events can arrive shortly after stop returns.
+    setTimeout(() => this.lifecycleQuiet.delete(instanceId), 5_000).unref?.();
+  }
+
+  /**
+   * Attach console and wait until the stream is ready (or give up).
+   */
   private async attachConsole(
     instance: ManagedInstance,
     timeoutMs = 60_000,
@@ -441,12 +494,86 @@ export class InstanceManager {
     // Best-effort: callers that need console will fail with a clear error.
   }
 
+  private async handleContainerEvent(event: ManagedContainerEvent): Promise<void> {
+    const instance = [...this.instances.values()].find(
+      (item) =>
+        item.containerName === event.containerName ||
+        item.instanceId === event.instanceId,
+    );
+    if (!instance) return;
+
+    if (event.status === 'start') {
+      if (instance.state !== 'running' && instance.state !== 'starting') {
+        instance.startedAt = new Date().toISOString();
+        void instance.console.start();
+        this.setState(instance, 'running');
+      }
+      return;
+    }
+
+    if (event.status !== 'die' && event.status !== 'oom') return;
+
+    const reason =
+      event.status === 'oom'
+        ? 'Container killed (out of memory)'
+        : `Container exited (code ${event.exitCode ?? '?'})`;
+
+    log.warn('cs2 container stopped unexpectedly', {
+      instanceId: instance.instanceId,
+      status: event.status,
+      exitCode: event.exitCode,
+      desiredRunning: instance.desiredRunning,
+      autoRestart: instance.autoRestart,
+    });
+
+    instance.console.stop();
+    instance.startedAt = null;
+
+    if (!instance.desiredRunning || !instance.autoRestart) {
+      this.setState(instance, 'stopped', reason);
+      return;
+    }
+
+    if (
+      this.lifecycleQuiet.has(instance.instanceId) ||
+      this.autoRestarting.has(instance.instanceId)
+    ) {
+      this.setState(instance, 'stopped', reason);
+      return;
+    }
+    this.autoRestarting.add(instance.instanceId);
+    this.setState(instance, 'starting', `${reason}; auto-restarting`);
+
+    try {
+      await new Promise((r) => setTimeout(r, 3_000));
+      if (!instance.desiredRunning) {
+        this.setState(instance, 'stopped');
+        return;
+      }
+      await this.start(instance.instanceId);
+      log.info('auto-restarted cs2 container', {
+        instanceId: instance.instanceId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setState(instance, 'error', `Auto-restart failed: ${message}`);
+      log.error('auto-restart failed', {
+        instanceId: instance.instanceId,
+        error,
+      });
+    } finally {
+      this.autoRestarting.delete(instance.instanceId);
+    }
+  }
+
   async remove(
     instanceId: string,
     removeVolume: boolean,
     names?: { containerName?: string; volumeName?: string },
   ): Promise<void> {
     const managed = this.instances.get(instanceId);
+    if (managed) managed.desiredRunning = false;
+    this.lifecycleQuiet.add(instanceId);
     managed?.console.stop();
 
     const containerName = managed?.containerName ?? names?.containerName;
@@ -487,6 +614,7 @@ export class InstanceManager {
       this.setState(managed, 'removed');
       this.instances.delete(instanceId);
     }
+    this.releaseLifecycleQuiet(instanceId);
   }
 
   /**
@@ -502,36 +630,42 @@ export class InstanceManager {
     const instance = this.get(instanceId);
     const previousBuildId = instance.buildId ?? (await this.readBuildId(instance));
 
+    this.lifecycleQuiet.add(instanceId);
+    instance.desiredRunning = true;
     this.setState(instance, 'updating');
     report('stopping', 'Stopping the server', 5);
     instance.console.stop();
 
     const container = docker.getContainer(instance.containerName);
-    await container.stop({ t: 30 }).catch((error: unknown) => {
-      if ((error as { statusCode?: number }).statusCode !== 304) throw error;
-    });
+    try {
+      await container.stop({ t: 30 }).catch((error: unknown) => {
+        if ((error as { statusCode?: number }).statusCode !== 304) throw error;
+      });
 
-    if (validate) {
-      // STEAMAPPVALIDATE makes SteamCMD checksum every file, which takes far
-      // longer but repairs a partially corrupted install.
-      await recreateWithEnv(instance, { STEAMAPPVALIDATE: '1' });
-    }
+      if (validate) {
+        // STEAMAPPVALIDATE makes SteamCMD checksum every file, which takes far
+        // longer but repairs a partially corrupted install.
+        await recreateWithEnv(instance, { STEAMAPPVALIDATE: '1' });
+      }
 
-    report('updating', 'Running SteamCMD', 15);
-    await docker.getContainer(instance.containerName).start();
-    await this.followInstall(instance, report);
-
-    if (validate) {
-      await recreateWithEnv(instance, { STEAMAPPVALIDATE: '0' });
+      report('updating', 'Running SteamCMD', 15);
       await docker.getContainer(instance.containerName).start();
+      await this.followInstall(instance, report);
+
+      if (validate) {
+        await recreateWithEnv(instance, { STEAMAPPVALIDATE: '0' });
+        await docker.getContainer(instance.containerName).start();
+      }
+
+      const buildId = await this.readBuildId(instance);
+      instance.buildId = buildId;
+      void instance.console.start();
+      this.setState(instance, 'running');
+
+      return { previousBuildId, buildId };
+    } finally {
+      this.releaseLifecycleQuiet(instanceId);
     }
-
-    const buildId = await this.readBuildId(instance);
-    instance.buildId = buildId;
-    void instance.console.start();
-    this.setState(instance, 'running');
-
-    return { previousBuildId, buildId };
   }
 
   async inspect(instanceId: string): Promise<InstanceSnapshot> {
@@ -698,4 +832,98 @@ async function recreateWithEnv(
 
 function formatGb(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+interface ManagedContainerEvent {
+  status: string;
+  containerName: string;
+  instanceId: string | null;
+  exitCode: number | null;
+}
+
+/**
+ * Subscribes to Docker container events for managed CS2 instances.
+ * Returns a stop function. Reconnects if the event stream drops.
+ */
+function watchManagedContainerEvents(
+  onEvent: (event: ManagedContainerEvent) => void,
+): () => void {
+  let stopped = false;
+  let stream: NodeJS.ReadableStream | null = null;
+  let buffer = '';
+  let retryTimer: NodeJS.Timeout | null = null;
+
+  const connect = () => {
+    if (stopped) return;
+    void docker
+      .getEvents({
+        filters: {
+          type: ['container'],
+          event: ['die', 'start', 'oom'],
+          label: [`${LABEL_MANAGED}=true`],
+        },
+      })
+      .then((events) => {
+        if (stopped) {
+          (events as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
+          return;
+        }
+        stream = events as NodeJS.ReadableStream;
+        buffer = '';
+        stream.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf8');
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const raw = JSON.parse(line) as {
+                status?: string;
+                Actor?: {
+                  Attributes?: Record<string, string>;
+                };
+              };
+              const attrs = raw.Actor?.Attributes ?? {};
+              onEvent({
+                status: raw.status ?? '',
+                containerName: attrs.name ?? '',
+                instanceId: attrs[LABEL_INSTANCE] ?? null,
+                exitCode: attrs.exitCode
+                  ? Number.parseInt(attrs.exitCode, 10)
+                  : null,
+              });
+            } catch (error) {
+              log.debug('ignored malformed docker event', { error });
+            }
+          }
+        });
+        stream.on('end', () => scheduleReconnect());
+        stream.on('error', (error) => {
+          log.warn('docker event stream error', { error });
+          scheduleReconnect();
+        });
+      })
+      .catch((error: unknown) => {
+        log.warn('docker event watch failed', { error });
+        scheduleReconnect();
+      });
+  };
+
+  const scheduleReconnect = () => {
+    if (stopped || retryTimer) return;
+    stream = null;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      connect();
+    }, 5_000);
+    retryTimer.unref?.();
+  };
+
+  connect();
+
+  return () => {
+    stopped = true;
+    if (retryTimer) clearTimeout(retryTimer);
+    (stream as { destroy?: () => void } | null)?.destroy?.();
+  };
 }

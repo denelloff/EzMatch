@@ -58,6 +58,17 @@ export class ConsoleSession {
     return this.stream !== null && !this.stream.destroyed;
   }
 
+  /** True when Docker reports the CS2 container as running. */
+  async isContainerRunning(): Promise<boolean> {
+    try {
+      const info = await docker.getContainer(this.containerName).inspect();
+      return Boolean(info.State.Running);
+    } catch (error) {
+      if (isNotFound(error)) return false;
+      throw error;
+    }
+  }
+
   private async attach(): Promise<void> {
     if (this.stopped || this.attaching || this.isAttached) return;
     this.attaching = true;
@@ -158,13 +169,22 @@ export class ConsoleSession {
 
   /** Writes a command to the server console. */
   async send(command: string): Promise<void> {
+    if (!(await this.isContainerRunning())) {
+      throw new Error(
+        'CS2 container is not running. Start the instance, wait until the map loads, then try again.',
+      );
+    }
+
     // After restart, attach can lag a few seconds behind State.Running.
-    for (let attempt = 0; attempt < 5 && !this.isAttached; attempt++) {
+    for (let attempt = 0; attempt < 8 && !this.isAttached; attempt++) {
       await this.attach();
       if (!this.isAttached) await delay(1000);
     }
     if (!this.stream) {
-      throw new Error('Console is not attached; the container may be stopped');
+      const codeHint = 'Docker attach failed (container may have just stopped).';
+      throw new Error(
+        `Console is not attached. ${codeHint} Start the instance and retry.`,
+      );
     }
     // A newline inside the payload would let one command smuggle in another.
     const sanitized = command.replace(/[\r\n]+/g, ' ').trim();

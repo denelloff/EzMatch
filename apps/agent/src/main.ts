@@ -8,7 +8,7 @@ import { log } from './logger.js';
 import { LogServer } from './logs/server.js';
 import { collectNetworkRates } from './network.js';
 
-const AGENT_VERSION = '0.1.4';
+const AGENT_VERSION = '0.1.5';
 
 async function main(): Promise<void> {
   const config = loadConfig(AGENT_VERSION);
@@ -30,6 +30,7 @@ async function main(): Promise<void> {
 
   const instances = new InstanceManager(config);
   await instances.adopt();
+  instances.startEventWatch();
 
   // The log receiver and the hub client refer to each other: logs are pushed
   // to the hub, and the hub's commands configure the log receiver. This holder
@@ -92,6 +93,7 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string) => {
     log.info('shutting down', { signal });
+    instances.stopEventWatch();
     await hub.stop();
     await logs.stop();
     for (const instance of instances.list()) instance.console.stop();
