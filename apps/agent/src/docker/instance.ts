@@ -421,26 +421,52 @@ export class InstanceManager {
     await this.start(instanceId);
   }
 
-  async remove(instanceId: string, removeVolume: boolean): Promise<void> {
-    const instance = this.get(instanceId);
-    instance.console.stop();
+  async remove(
+    instanceId: string,
+    removeVolume: boolean,
+    names?: { containerName?: string; volumeName?: string },
+  ): Promise<void> {
+    const managed = this.instances.get(instanceId);
+    managed?.console.stop();
 
+    const containerName = managed?.containerName ?? names?.containerName;
+    const volumeName = managed?.volumeName ?? names?.volumeName;
+
+    // Prefer label lookup so a half-created install is still cleaned up.
     try {
-      await docker.getContainer(instance.containerName).remove({ force: true });
+      const listed = await docker.listContainers({
+        all: true,
+        filters: { label: [`${LABEL_INSTANCE}=${instanceId}`] },
+      });
+      for (const summary of listed) {
+        await docker.getContainer(summary.Id).remove({ force: true }).catch((error: unknown) => {
+          if (!isNotFound(error)) throw error;
+        });
+      }
     } catch (error) {
-      if (!isNotFound(error)) throw error;
+      log.warn('label-based container cleanup failed', { instanceId, error });
     }
 
-    if (removeVolume) {
+    if (containerName) {
       try {
-        await docker.getVolume(instance.volumeName).remove();
+        await docker.getContainer(containerName).remove({ force: true });
       } catch (error) {
         if (!isNotFound(error)) throw error;
       }
     }
 
-    this.setState(instance, 'removed');
-    this.instances.delete(instanceId);
+    if (removeVolume && volumeName) {
+      try {
+        await docker.getVolume(volumeName).remove();
+      } catch (error) {
+        if (!isNotFound(error)) throw error;
+      }
+    }
+
+    if (managed) {
+      this.setState(managed, 'removed');
+      this.instances.delete(instanceId);
+    }
   }
 
   /**
@@ -557,6 +583,14 @@ export class InstanceManager {
   }
 }
 
+function buildAdditionalArgs(config: Cs2Config): string {
+  const parts: string[] = [];
+  if (config.vacDisabled) parts.push('-insecure');
+  const extra = config.extraArgs.trim();
+  if (extra) parts.push(extra);
+  return parts.join(' ');
+}
+
 function buildEnv(config: Cs2Config, agent: AgentConfig): string[] {
   const env: Record<string, string> = {
     SRCDS_TOKEN: config.gsltToken,
@@ -572,7 +606,7 @@ function buildEnv(config: Cs2Config, agent: AgentConfig): string[] {
     CS2_STARTMAP: config.startMap,
     CS2_LAN: config.lan ? '1' : '0',
     CS2_SERVER_HIBERNATE: config.hibernate ? '1' : '0',
-    CS2_ADDITIONAL_ARGS: config.extraArgs,
+    CS2_ADDITIONAL_ARGS: buildAdditionalArgs(config),
     CS2_BOT_QUOTA: '0',
     STEAMAPPVALIDATE: '0',
     TZ: process.env.TZ ?? 'UTC',

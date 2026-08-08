@@ -22,6 +22,8 @@ export const zCs2Config = z.object({
   startMap: z.string().default('de_dust2'),
   lan: z.boolean().default(false),
   hibernate: z.boolean().default(false),
+  /** Maps to `-insecure` so VAC is not enforced on this dedicated server. */
+  vacDisabled: z.boolean().default(false),
   /** Appended verbatim to the cs2 command line. Panel-side validated. */
   extraArgs: z.string().default(''),
 });
@@ -62,6 +64,9 @@ export const zCommand = z.discriminatedUnion('type', [
     type: z.literal('instance.remove'),
     instanceId: zId,
     removeVolume: z.boolean().default(false),
+    /** Used when the agent never tracked the instance (failed create). */
+    containerName: z.string().min(1).max(128).optional(),
+    volumeName: z.string().min(1).max(128).optional(),
   }),
   z.object({
     type: z.literal('instance.update'),

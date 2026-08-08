@@ -38,12 +38,12 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
         stripComponents: 0,
       },
       {
-        // Without this line the game never loads Metamod, and every plugin
-        // that depends on it silently does nothing. CS2 updates rewrite
-        // gameinfo.gi, so the edit has to be re-applied after each one.
+        // Without this line the game never loads Metamod. CS2 updates rewrite
+        // gameinfo.gi; when Game_LowViolence is missing the agent inserts
+        // before the first plain `Game csgo` SearchPaths entry instead.
         kind: 'ensure-line-in-file',
         file: `${GAME_DIR}/gameinfo.gi`,
-        afterLine: 'Game_LowViolence csgo_lv',
+        afterLine: 'Game_LowViolence',
         line: 'Game csgo/addons/metamod',
       },
     ],
@@ -150,7 +150,7 @@ export const PLUGIN_DESCRIPTIONS: PluginCatalogEntry[] = [
     summary:
       'Restores fake_rcon_password and fake_rcon for admins typing into the in-game console.',
     caution:
-      'Purely for human admins. PPanel drives the server through the container console and never uses RCON, so this is optional. Set its password in addons/configs after the first start.',
+      'Uses the same password as RCON (rcon_password). PMatch itself drives the server through the container console and does not need this plugin.',
     requires: ['metamod'],
   },
 ];

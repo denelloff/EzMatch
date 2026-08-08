@@ -60,10 +60,10 @@ async function main(): Promise<void> {
         dockerRoot: current.rootDir,
       });
       const network = await collectNetworkRates();
-      // Only the volatile parts; the rest does not change while the agent runs.
+      // Full snapshot each beat so the live host panel stays accurate (disks,
+      // network rates, and static fields after agent reconnect).
       return {
-        disks: host.disks,
-        dockerVersion: host.dockerVersion,
+        ...host,
         ...network,
       };
     },

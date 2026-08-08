@@ -6,7 +6,7 @@ import type { InstanceManager } from './docker/instance.js';
 import { collectHostInfo, freeBytesFor } from './host.js';
 import type { LogServer } from './logs/server.js';
 import { log } from './logger.js';
-import { runInstallSteps, verifyPlugin } from './plugins/installer.js';
+import { runInstallSteps, verifyPlugin, writeFakeRconPassword } from './plugins/installer.js';
 
 /** 20 GiB: a CS2 patch is far smaller than the game, but never trivial. */
 const UPDATE_MIN_FREE_BYTES = 21_474_836_480;
@@ -80,7 +80,10 @@ export async function executeCommand(
 
     case 'instance.remove':
       context.logs.unregister(command.instanceId);
-      await context.instances.remove(command.instanceId, command.removeVolume);
+      await context.instances.remove(command.instanceId, command.removeVolume, {
+        containerName: command.containerName,
+        volumeName: command.volumeName,
+      });
       return { removed: true };
 
     case 'instance.update': {
@@ -205,6 +208,21 @@ async function installPlugins(
     await runInstallSteps(instance.containerName, plugin.install, (message, percent) =>
       context.progress('installing-plugins', message, percent),
     );
+
+    if (plugin.id === 'fake_rcon') {
+      const password = await readContainerEnv(instance.containerName, 'CS2_RCONPW');
+      if (!password) {
+        throw new Error(
+          'fake_rcon needs CS2_RCONPW from the container; set RCON password when creating the instance.',
+        );
+      }
+      context.progress(
+        'installing-plugins',
+        'Writing fake_rcon password from rcon_password',
+        null,
+      );
+      await writeFakeRconPassword(instance.containerName, password);
+    }
   }
 
   // Plugins are loaded at map load, so nothing is verifiable until the server
@@ -228,6 +246,18 @@ async function installPlugins(
     }
     log.info('plugin verified', { instanceId, plugin: plugin.id });
   }
+}
+
+async function readContainerEnv(
+  containerName: string,
+  key: string,
+): Promise<string | null> {
+  const details = await docker.getContainer(containerName).inspect();
+  const prefix = `${key}=`;
+  for (const entry of details.Config.Env ?? []) {
+    if (entry.startsWith(prefix)) return entry.slice(prefix.length);
+  }
+  return null;
 }
 
 /**

@@ -158,8 +158,8 @@ async function ensureDirectory(
 
 /**
  * Metamod is only loaded once `Game csgo/addons/metamod` appears in
- * `gameinfo.gi`, directly after the `Game_LowViolence csgo_lv` line. CS2 updates
- * rewrite this file, so the edit has to be re-applied and must stay idempotent.
+ * `gameinfo.gi` at the top of SearchPaths. CS2 updates rewrite this file and
+ * sometimes drop `Game_LowViolence`, so the insert must try several anchors.
  */
 async function ensureLineInFile(
   container: Docker.Container,
@@ -172,25 +172,30 @@ async function ensureLineInFile(
     throw new Error(`${path} does not exist, so it cannot be patched`);
   }
 
-  const normalizedLine = line.trim();
-  if (contents.split('\n').some((existing) => existing.trim() === normalizedLine)) {
+  const normalizedLine = line.trim().replace(/\s+/g, ' ');
+  const lines = contents.split('\n');
+  if (
+    lines.some(
+      (existing) => existing.trim().replace(/\s+/g, ' ') === normalizedLine,
+    )
+  ) {
     return;
   }
 
-  const lines = contents.split('\n');
-  const anchor = lines.findIndex((existing) =>
-    existing.trim().startsWith(afterLine.trim()),
-  );
-  if (anchor === -1) {
+  const insertAt = findGameinfoInsertIndex(lines, afterLine);
+  if (insertAt == null) {
     throw new Error(
-      `Could not find "${afterLine}" in ${path}. The file layout changed; the plugin descriptor needs updating.`,
+      `Could not find a SearchPaths anchor in ${path} (looked for "${afterLine}", Game_LowViolence, and "Game csgo"). The file layout changed; the plugin descriptor needs updating.`,
     );
   }
 
-  // Match the anchor's indentation so the file stays readable for a human who
-  // opens it after an update.
-  const indentation = /^\s*/.exec(lines[anchor]!)?.[0] ?? '';
-  lines.splice(anchor + 1, 0, `${indentation}${normalizedLine}`);
+  const { index, mode } = insertAt;
+  const reference = lines[mode === 'after' ? index : index] ?? '';
+  const indentation = /^\s*/.exec(reference)?.[0] ?? '\t\t';
+  const spliceAt = mode === 'after' ? index + 1 : index;
+  // Keep the trimmed wording from the descriptor; indentation comes from neighbours.
+  const bare = line.trim();
+  lines.splice(spliceAt, 0, `${indentation}${bare}`);
 
   await putFiles(container, dirname(path).replace(/\\/g, '/'), [
     {
@@ -198,6 +203,47 @@ async function ensureLineInFile(
       content: Buffer.from(lines.join('\n'), 'utf8'),
     },
   ]);
+}
+
+/**
+ * Prefer the catalog `afterLine`, then Game_LowViolence (any spacing), then
+ * insert *before* the first plain `Game csgo` entry so Metamod stays first.
+ */
+function findGameinfoInsertIndex(
+  lines: string[],
+  afterLine: string,
+): { index: number; mode: 'after' | 'before' } | null {
+  const wanted = afterLine.trim().replace(/\s+/g, ' ');
+  if (wanted) {
+    const exact = lines.findIndex((existing) =>
+      existing.trim().replace(/\s+/g, ' ').startsWith(wanted),
+    );
+    if (exact !== -1) return { index: exact, mode: 'after' };
+  }
+
+  const lowViolence = lines.findIndex((existing) =>
+    /^Game_LowViolence\b/i.test(existing.trim()),
+  );
+  if (lowViolence !== -1) return { index: lowViolence, mode: 'after' };
+
+  // AlliedModders: Metamod must be the first Game entry in SearchPaths.
+  const gameCsgo = lines.findIndex((existing) =>
+    /^\s*Game\s+csgo\s*(?:\/\/.*)?$/.test(existing),
+  );
+  if (gameCsgo !== -1) return { index: gameCsgo, mode: 'before' };
+
+  const searchPathsBrace = lines.findIndex((existing, index) => {
+    if (!/SearchPaths/i.test(existing)) return false;
+    if (existing.includes('{')) return true;
+    return lines[index + 1]?.trim() === '{';
+  });
+  if (searchPathsBrace !== -1) {
+    const braceOnSame = lines[searchPathsBrace]!.includes('{');
+    const braceIndex = braceOnSame ? searchPathsBrace : searchPathsBrace + 1;
+    return { index: braceIndex, mode: 'after' };
+  }
+
+  return null;
 }
 
 async function execInContainer(
@@ -252,4 +298,39 @@ export async function verifyPlugin(
     ok: output.toLowerCase().includes(plugin.verifyExpect.toLowerCase()),
     output,
   };
+}
+
+/**
+ * fake_rcon reads `addons/configs/fake_rcon/config.cfg` (KeyValues). Mirror the
+ * real RCON password so admins can `fake_rcon_password` with the same secret.
+ */
+export async function writeFakeRconPassword(
+  containerName: string,
+  password: string,
+): Promise<void> {
+  if (password.length < 4) {
+    throw new Error('fake_rcon password must be at least 4 characters');
+  }
+
+  const container = docker.getContainer(containerName);
+  const dir = resolveInstallPath('game/csgo/addons/configs/fake_rcon');
+  await ensureDirectory(container, dir);
+
+  const content = [
+    '"Config"',
+    '{',
+    `\t"rcon_password"\t"${escapeKeyValues(password)}"`,
+    '\t"caching_time"\t"120"',
+    '}',
+    '',
+  ].join('\n');
+
+  await putFiles(container, dir, [
+    { name: 'config.cfg', content: Buffer.from(content, 'utf8') },
+  ]);
+  log.info('wrote fake_rcon config password', { containerName });
+}
+
+function escapeKeyValues(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
