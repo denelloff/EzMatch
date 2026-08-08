@@ -20,8 +20,8 @@ RUN pnpm --filter @ppanel/protocol build \
 
 FROM node:24-alpine AS runtime
 
-# tini for PID 1; docker-cli so the agent can detach a self-update swap without
-# pulling a separate helper image (which often hangs behind slow registries).
+# tini for PID 1; docker-cli for the one-shot swap helper container (same image,
+# docker.sock only) so self-update never needs a second pull from Docker Hub.
 RUN apk add --no-cache tini docker-cli \
  && addgroup -S ppanel && adduser -S -G ppanel ppanel
 
