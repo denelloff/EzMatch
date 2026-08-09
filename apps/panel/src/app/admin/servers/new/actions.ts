@@ -130,4 +130,3 @@ export async function addServerAction(
 
   redirect(`/admin/servers/${serverId}?task=${taskId}`);
 }
-

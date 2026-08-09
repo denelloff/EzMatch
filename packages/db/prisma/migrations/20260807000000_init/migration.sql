@@ -287,4 +287,3 @@ ALTER TABLE `tasks` ADD CONSTRAINT `tasks_instanceId_fkey` FOREIGN KEY (`instanc
 
 -- AddForeignKey
 ALTER TABLE `audit_logs` ADD CONSTRAINT `audit_logs_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-

@@ -66,4 +66,3 @@ export function LanguageToggle({
     </form>
   );
 }
-

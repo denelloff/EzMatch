@@ -55,4 +55,3 @@ export function isLiveState(state: MatchState): boolean {
 export function formatScore(value: number): string {
   return value.toString().padStart(2, '0');
 }
-

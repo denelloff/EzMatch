@@ -16,4 +16,3 @@ export function createApp() {
  * without every one of them having to spell the generics out.
  */
 export type HubApp = ReturnType<typeof createApp>;
-

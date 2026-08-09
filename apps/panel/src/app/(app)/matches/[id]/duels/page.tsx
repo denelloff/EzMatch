@@ -127,4 +127,3 @@ export default async function DuelsPage({
     </Card>
   );
 }
-

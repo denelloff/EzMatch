@@ -192,4 +192,3 @@ function unpackZip(data: Buffer, stripComponents: number): Promise<FileEntry[]> 
     });
   });
 }
-

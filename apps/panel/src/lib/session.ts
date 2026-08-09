@@ -96,4 +96,3 @@ function clientIp(headerList: Headers): string | null {
   if (forwarded) return forwarded.split(',')[0]!.trim().slice(0, 45);
   return headerList.get('x-real-ip')?.slice(0, 45) ?? null;
 }
-

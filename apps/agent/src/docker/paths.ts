@@ -25,4 +25,3 @@ export function resolveInstallPath(relative: string): string {
   }
   return `${CS2_ROOT}/${parts.join('/')}`;
 }
-

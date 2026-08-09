@@ -8,4 +8,3 @@ export default async function LegacyServerRedirect({
   const { id } = await params;
   redirect(`/admin/servers/${id}`);
 }
-

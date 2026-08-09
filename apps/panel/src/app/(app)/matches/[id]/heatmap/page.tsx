@@ -70,4 +70,3 @@ export default async function HeatmapPage({
 
   return <HeatmapView points={points} players={players} map={match.map} />;
 }
-

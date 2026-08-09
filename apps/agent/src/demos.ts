@@ -73,4 +73,3 @@ function demultiplex(buffer: Buffer): string {
 
   return Buffer.concat(parts).toString('utf8');
 }
-

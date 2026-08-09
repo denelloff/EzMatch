@@ -63,4 +63,3 @@ export async function mergeServerHostInfo(
 
   return next;
 }
-

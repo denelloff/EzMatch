@@ -32,4 +32,3 @@ export function makeInternalGuard(expectedToken: string) {
     }
   };
 }
-

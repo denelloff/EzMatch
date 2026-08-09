@@ -32,4 +32,3 @@ export async function POST(
 
   return NextResponse.redirect(new URL(`/admin/servers/${id}`, request.url), 303);
 }
-

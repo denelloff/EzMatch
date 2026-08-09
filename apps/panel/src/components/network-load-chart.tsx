@@ -81,4 +81,3 @@ export function NetworkLoadChart({
     </div>
   );
 }
-

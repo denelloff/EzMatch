@@ -68,4 +68,3 @@ export async function verifyPassword(
     derived.length === expected.length && timingSafeEqual(derived, expected)
   );
 }
-

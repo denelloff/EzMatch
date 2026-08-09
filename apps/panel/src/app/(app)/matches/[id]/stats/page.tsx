@@ -161,4 +161,3 @@ export default async function MatchStatisticsPage({
     </div>
   );
 }
-

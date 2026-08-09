@@ -32,4 +32,3 @@ export const log = {
   warn: (message: string, context?: unknown) => emit('warn', message, context),
   error: (message: string, context?: unknown) => emit('error', message, context),
 };
-

@@ -58,4 +58,3 @@ class AgentRegistry {
 }
 
 export const agents = new AgentRegistry();
-

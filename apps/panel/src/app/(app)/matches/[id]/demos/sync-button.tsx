@@ -38,4 +38,3 @@ export function SyncDemosButton({ matchId }: { matchId: string }) {
     </div>
   );
 }
-

@@ -44,4 +44,3 @@ const timer = setInterval(() => {
   }
 }, CLEANUP_INTERVAL_MS);
 timer.unref?.();
-

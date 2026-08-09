@@ -97,4 +97,3 @@ export default async function MapStatisticsPage() {
     </div>
   );
 }
-

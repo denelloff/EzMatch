@@ -41,4 +41,3 @@ class Bus {
 }
 
 export const bus = new Bus();
-
