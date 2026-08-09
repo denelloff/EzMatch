@@ -48,7 +48,7 @@ const STATE_HINT: Record<string, string> = {
   WARMUP:
     'Warmup is frozen so it will not end on its own. Start when both teams are in.',
   KNIFE: 'Knife round in progress. The winner picks a side when it ends.',
-  KNIFE_DECISION: 'Waiting for the knife winner to choose a side.',
+  KNIFE_DECISION: 'Knife winners: type !stay or !switch (or use the panel buttons).',
   LIVE: 'Match is live. The score comes from the server, not from eZ-Match counting rounds.',
   PAUSED: 'Paused. CS2 applies the pause at the end of the current round.',
   HALFTIME: 'Sides have swapped. The match resumes on the next round.',
@@ -86,6 +86,8 @@ export function MatchControls({
         state?: string;
         team1Score?: number;
         team2Score?: number;
+        team1Side?: string;
+        knifeWinner?: number | null;
         error?: string;
         streamersReady?: boolean;
       };
@@ -95,6 +97,10 @@ export function MatchControls({
         ...(data.state ? { state: data.state } : {}),
         ...(data.team1Score !== undefined ? { team1Score: data.team1Score } : {}),
         ...(data.team2Score !== undefined ? { team2Score: data.team2Score } : {}),
+        ...(data.team1Side !== undefined ? { team1Side: data.team1Side } : {}),
+        ...(data.knifeWinner !== undefined
+          ? { knifeWinner: data.knifeWinner }
+          : {}),
         ...(data.error !== undefined ? { lastError: data.error } : {}),
         ...(data.streamersReady !== undefined
           ? { streamersReady: data.streamersReady }
@@ -102,7 +108,13 @@ export function MatchControls({
       }));
 
       // A state change brings new transitions and player rows with it.
-      if (data.state || data.streamersReady !== undefined) router.refresh();
+      if (
+        data.state ||
+        data.streamersReady !== undefined ||
+        data.team1Side !== undefined
+      ) {
+        router.refresh();
+      }
     });
 
     return () => source.close();
@@ -198,13 +210,13 @@ export function MatchControls({
           <>
             <Action
               name="live:stay"
-              label={`${match.team1Name} stays`}
+              label="!stay (keep sides)"
               className={buttonClass}
               disabled={!canOperate}
             />
             <Action
               name="live:swap"
-              label="Swap sides"
+              label="!switch (swap sides)"
               className={secondaryButtonClass}
               disabled={!canOperate}
             />

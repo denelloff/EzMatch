@@ -220,8 +220,9 @@ export function EditInstanceForm({
             <span>
               <span className="block text-sm text-ink-100">Disable bots</span>
               <span className="mt-0.5 block text-xs text-ink-400">
-                Sets <span className="console-surface">bot_quota 0</span> and kicks bots
-                after start. Recommended for match servers.
+                Sets <span className="console-surface">bot_quota 0</span>, kicks bots,
+                and adds <span className="console-surface">-nobots</span> to the launch
+                args. Recommended for match servers.
               </span>
             </span>
           </label>

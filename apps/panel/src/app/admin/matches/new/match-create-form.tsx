@@ -218,18 +218,10 @@ export function MatchCreateForm({
     });
   };
 
-  const team1 = useMemo(
-    () => teams.find((team) => team.id === team1Id) ?? null,
-    [teams, team1Id],
-  );
-  const team2 = useMemo(
-    () => teams.find((team) => team.id === team2Id) ?? null,
-    [teams, team2Id],
-  );
-  const selectedServer = useMemo(
-    () => servers.find((server) => server.id === instanceId) ?? null,
-    [servers, instanceId],
-  );
+  const team1 = teams.find((team) => team.id === team1Id) ?? null;
+  const team2 = teams.find((team) => team.id === team2Id) ?? null;
+  const selectedServer =
+    servers.find((server) => server.id === instanceId) ?? null;
 
   useEffect(() => {
     if (!selectedServer?.map) return;
@@ -292,7 +284,6 @@ export function MatchCreateForm({
             teams={teams}
             excludeId={team2Id}
             value={team1Id}
-            selected={team1}
             pickLabel={labels.pickTeam}
             onChange={setTeam1Id}
           />
@@ -315,7 +306,6 @@ export function MatchCreateForm({
             teams={teams}
             excludeId={team1Id}
             value={team2Id}
-            selected={team2}
             pickLabel={labels.pickTeam}
             onChange={setTeam2Id}
             align="right"
@@ -393,10 +383,11 @@ export function MatchCreateForm({
               name="joinPassword"
               type="text"
               maxLength={64}
+              defaultValue="pcw"
               autoComplete="off"
               spellCheck={false}
               className={inputClass}
-              placeholder="optional"
+              placeholder="pcw"
             />
           </Field>
         </div>
@@ -567,7 +558,6 @@ function TeamPick({
   teams,
   excludeId,
   value,
-  selected,
   pickLabel,
   onChange,
   align = 'left',
@@ -577,12 +567,16 @@ function TeamPick({
   teams: MatchTeamOption[];
   excludeId: string;
   value: string;
-  selected: MatchTeamOption | null;
   pickLabel: string;
   onChange: (id: string) => void;
   align?: 'left' | 'right';
 }) {
   const options = teams.filter((team) => team.id !== excludeId);
+  // Resolve from the live value so the preview cannot drift from the <select>.
+  const selected =
+    teams.find((team) => team.id === value) ??
+    options.find((team) => team.id === value) ??
+    null;
   const sideTone =
     side === 'CT'
       ? 'border-brand-500/40 bg-brand-500/10'
@@ -598,6 +592,7 @@ function TeamPick({
         {sideLabel}
       </p>
       <div
+        key={value || 'none'}
         className={`mt-3 flex items-center gap-3 ${
           align === 'right' ? 'flex-row-reverse' : ''
         }`}
@@ -612,13 +607,13 @@ function TeamPick({
             />
           ) : (
             <span className="text-xs font-semibold text-ink-400">
-              {selected?.tag?.slice(0, 4) ?? '—'}
+              {selected?.tag?.slice(0, 4) || '—'}
             </span>
           )}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-base font-semibold text-ink-100">
-            {selected?.name ?? pickLabel}
+            {selected ? selected.name : pickLabel}
           </p>
           {selected ? (
             <p
@@ -642,7 +637,9 @@ function TeamPick({
       <select
         className={`mt-3 ${selectClass}`}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          onChange(event.target.value);
+        }}
         required
       >
         <option value="">{pickLabel}</option>

@@ -108,7 +108,13 @@ export function PluginPanel({
                     ) : null}
                   </p>
                   <p className="mt-0.5 text-sm text-ink-400">{plugin.summary}</p>
-                  {current?.lastError ? (
+                  {current?.lastError && current.status === 'FAILED' ? (
+                    <p className="mt-1 text-xs text-danger-500">
+                      Last install error: {current.lastError}. If the plugin
+                      already loads on the server, use Reinstall or Check for
+                      updates to clear this.
+                    </p>
+                  ) : current?.lastError ? (
                     <p className="mt-1 text-xs text-danger-500">{current.lastError}</p>
                   ) : plugin.caution ? (
                     <p className="mt-1 text-xs text-ink-500">{plugin.caution}</p>

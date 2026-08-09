@@ -153,6 +153,26 @@ export async function installPluginTask(input: {
 
   void (async () => {
     try {
+      // Clear a stale FAILED banner as soon as a fresh attempt starts.
+      await db().pluginInstall.upsert({
+        where: {
+          instanceId_pluginId: {
+            instanceId: input.instanceId,
+            pluginId: input.pluginId,
+          },
+        },
+        create: {
+          instanceId: input.instanceId,
+          pluginId: input.pluginId,
+          version: 'pending',
+          status: 'PENDING',
+        },
+        update: {
+          status: 'PENDING',
+          lastError: null,
+        },
+      });
+
       const skipped = specs
         .filter((spec) => !specsToInstall.some((item) => item.id === spec.id))
         .map((spec) => pluginName(spec.id));
@@ -380,15 +400,17 @@ export async function checkPluginUpdates(
       updates.push(info);
       await db().pluginInstall.updateMany({
         where: { instanceId, pluginId: row.pluginId },
-        data: { status: 'NEEDS_RECHECK' },
+        data: { status: 'NEEDS_RECHECK', lastError: null },
       });
     } else {
       upToDate.push(info);
+      // Promote FAILED/NEEDS_RECHECK when the pinned catalog version matches —
+      // a past download error must not stick forever if the plugin is fine.
       await db().pluginInstall.updateMany({
         where: {
           instanceId,
           pluginId: row.pluginId,
-          status: { in: ['NEEDS_RECHECK', 'INSTALLED'] },
+          status: { in: ['NEEDS_RECHECK', 'INSTALLED', 'FAILED'] },
         },
         data: { status: 'INSTALLED', lastError: null },
       });

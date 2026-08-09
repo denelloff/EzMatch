@@ -120,10 +120,13 @@ export function warmupCommands(settings: MatchSettings): ConsoleCommand[] {
 }
 
 /**
- * Knife round: melee only, no economy, no bomb. Ends warmup and restarts, so
- * the first live round after this is the knife round itself.
+ * Knife round: melee only, no economy, no bomb. Ends warmup and restarts so the
+ * next round is knife-only.
+ *
+ * Do NOT set `mp_maxrounds 1` — that ends the CS2 match (map vote / session
+ * reset). Keep the real maxrounds and pause after the knife round instead.
  */
-export function knifeCommands(): ConsoleCommand[] {
+export function knifeCommands(settings: MatchSettings): ConsoleCommand[] {
   return [
     cmd('mp_give_player_c4 0'),
     cmd('mp_free_armor 0'),
@@ -142,10 +145,25 @@ export function knifeCommands(): ConsoleCommand[] {
     cmd('mp_respawn_immunitytime 0'),
     cmd('mp_roundtime 1.92'),
     cmd('mp_roundtime_defuse 1.92'),
-    cmd('mp_maxrounds 1'),
-    cmd(matchSay('Knife round'), 500),
+    cmd(`mp_maxrounds ${settings.maxRounds}`),
+    cmd('mp_match_end_restart 0'),
+    cmd('mp_halftime 1'),
+    cmd(matchSay('Knife round — winner picks side with !stay or !switch'), 500),
     cmd('mp_warmup_end', 1000),
     cmd('mp_restartgame 1'),
+  ];
+}
+
+/** Freeze the server after knife so teams can choose stay/switch. */
+export function knifeDecisionCommands(winnerName: string): ConsoleCommand[] {
+  return [
+    cmd('mp_pause_match'),
+    cmd(
+      matchSay(
+        `Knife over — ${winnerName}: type !stay or !switch to choose the starting side`,
+      ),
+      500,
+    ),
   ];
 }
 

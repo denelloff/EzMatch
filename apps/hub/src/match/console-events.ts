@@ -28,6 +28,10 @@ const CHANGE_TEAM_RE =
   /"([^"<]+)<(\d+)><([^>]*)><([^>]*)>"\s+(?:ChangeTeam\(\)|SwitchTeam)\b/i;
 const REQ_TEAM_RE = /req team\s+(\d+)/i;
 const PENDING_TEAM_RE = /ChangeBasePlayerTeamAndPendingTeam\s*=\s*(\d+)/i;
+const TEAM_WIN_RE =
+  /Team\s+"(CT|TERRORIST|T)"\s+triggered\s+"(?:SFUI_Notice_)?(?:CTs?_Win|Terrorists?_Win|Target_Bombed|Bomb_Defused|Target_Saved|Hostages_Rescued)"/i;
+const SFUI_WIN_RE =
+  /(?:SFUI_Notice_)?(CTs?_Win|Terrorists?_Win|Target_Bombed|Bomb_Defused|Target_Saved)/i;
 
 function steamIdFromRaw(raw: string): string | null {
   const value = raw.trim();
@@ -163,6 +167,30 @@ export function gameEventsFromConsoleLine(line: string): GameEvent[] {
     }
     if (/connected|entered the game/i.test(text)) {
       return [event('player_connect', actor, text)];
+    }
+  }
+
+  // Round winner notices — needed to know who picks stay/switch after knife.
+  const teamWin = TEAM_WIN_RE.exec(text) ?? SFUI_WIN_RE.exec(text);
+  if (teamWin) {
+    const token = (teamWin[1] ?? '').toUpperCase();
+    const side =
+      token.startsWith('CT') ||
+      token === 'BOMB_DEFUSED' ||
+      token === 'TARGET_SAVED' ||
+      token === 'HOSTAGES_RESCUED'
+        ? 'CT'
+        : token.startsWith('T') || token === 'TARGET_BOMBED'
+          ? 'TERRORIST'
+          : null;
+    if (side) {
+      return [
+        event('team_notice', null, text, {
+          winner: side,
+          to: side,
+          notice: token,
+        }),
+      ];
     }
   }
 

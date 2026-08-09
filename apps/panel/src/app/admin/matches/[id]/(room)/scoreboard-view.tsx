@@ -78,6 +78,7 @@ export function MatchScoreboard({
         state?: string;
         team1Score?: number;
         team2Score?: number;
+        team1Side?: string;
         players?: boolean;
       };
       if (data.state) setState(data.state);
@@ -86,6 +87,7 @@ export function MatchScoreboard({
       if (
         data.state ||
         data.team1Score !== undefined ||
+        data.team1Side !== undefined ||
         data.players
       ) {
         router.refresh();

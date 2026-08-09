@@ -8,6 +8,7 @@ import { logger } from '../logger.js';
 import {
   endCommands,
   knifeCommands,
+  knifeDecisionCommands,
   liveCommands,
   listBackupsCommands,
   parseBackupList,
@@ -34,6 +35,9 @@ import { sideFromTeamNumber } from './console-events.js';
  * deliberately longer than a round restart.
  */
 const CONFIRM_TIMEOUT_MS = 90_000;
+
+/** Warmup nag: remind players that casters have not unlocked !ready yet. */
+const STREAMERS_NAG_MS = 30_000;
 
 interface Pending {
   toState: MatchState;
@@ -112,6 +116,10 @@ function playerIdentity(player: {
 
 class MatchRunner {
   private readonly pending = new Map<string, Pending>();
+  /** Warmup intervals that spam "Streamers are not ready" every 30s. */
+  private readonly streamerNags = new Map<string, NodeJS.Timeout>();
+  /** Last knife-round winning side seen in logs before round_end. */
+  private readonly knifeWinningSide = new Map<string, 'CT' | 'TERRORIST'>();
 
   attach(): void {
     ingest.onGameEvents((instanceId, events) => {
@@ -129,10 +137,18 @@ class MatchRunner {
   async resume(): Promise<void> {
     const live = await db().match.findMany({
       where: { state: { notIn: ['FINISHED', 'CANCELLED', 'DRAFT'] } },
-      select: { id: true, instanceId: true },
+      select: {
+        id: true,
+        instanceId: true,
+        state: true,
+        streamersReady: true,
+      },
     });
     for (const match of live) {
       ingest.setActiveMatch(match.instanceId, match.id);
+      if (match.state === 'WARMUP' && !match.streamersReady) {
+        this.startStreamerNag(match.id);
+      }
     }
     if (live.length > 0) {
       logger.info({ count: live.length }, 'resumed matches in progress');
@@ -222,6 +238,7 @@ class MatchRunner {
           },
         );
         await this.send(fresh, warmupCommands(settingsOf(fresh)));
+        this.startStreamerNag(matchId);
       },
     });
   }
@@ -234,13 +251,16 @@ class MatchRunner {
     }
     if (match.streamersReady) return;
 
+    this.stopStreamerNag(matchId);
     await db().match.update({
       where: { id: matchId },
       data: { streamersReady: true },
     });
     await this.send(
       match,
-      sayCommands('Streamers are ready. Type !ready when you are ready.'),
+      sayCommands(
+        'Streamers are ready. Players may type !ready when you are ready.',
+      ),
     );
     this.publish(matchId, { streamersReady: true });
   }
@@ -255,7 +275,9 @@ class MatchRunner {
       return;
     }
 
-    await this.sendExpecting(match, knifeCommands(), {
+    this.stopStreamerNag(matchId);
+    this.knifeWinningSide.delete(matchId);
+    await this.sendExpecting(match, knifeCommands(settingsOf(match)), {
       toState: 'KNIFE',
       reason: 'knife round started',
       accepts: (event) => event.kind === 'round_start',
@@ -274,14 +296,25 @@ class MatchRunner {
         where: { id: matchId },
         data: { team1Side: match.team1Side === 'CT' ? 'TERRORIST' : 'CT' },
       });
+      this.publish(matchId, {
+        team1Side: match.team1Side === 'CT' ? 'TERRORIST' : 'CT',
+      });
+      await this.send(
+        match,
+        sayCommands('Sides swapped — going live'),
+      );
+    } else {
+      await this.send(match, sayCommands('Sides stay — going live'));
     }
 
+    this.knifeWinningSide.delete(matchId);
     await this.transition(matchId, 'KNIFE_DECISION', 'LIVE', `knife: ${choice}`, false);
     await this.goLive(matchId);
   }
 
   async goLive(matchId: string): Promise<void> {
     const match = await loadMatch(matchId);
+    this.stopStreamerNag(matchId);
 
     await this.sendExpecting(match, liveCommands(settingsOf(match)), {
       toState: 'LIVE',
@@ -363,6 +396,8 @@ class MatchRunner {
     const match = await loadMatch(matchId);
     if (match.state === 'FINISHED' || match.state === 'CANCELLED') return;
 
+    this.stopStreamerNag(matchId);
+    this.knifeWinningSide.delete(matchId);
     this.clearPending(matchId);
     await this.send(match, stopRecordingCommands()).catch(() => undefined);
     await this.send(match, endCommands()).catch(() => undefined);
@@ -390,6 +425,8 @@ class MatchRunner {
     }
 
     this.clearPending(matchId);
+    this.stopStreamerNag(matchId);
+    this.knifeWinningSide.delete(matchId);
     if (match.state !== 'DRAFT') {
       await this.send(match, endCommands()).catch(() => undefined);
       ingest.setActiveMatch(match.instanceId, null);
@@ -505,7 +542,11 @@ class MatchRunner {
         break;
 
       case 'round_end':
-        await this.onRoundEnd(matchId);
+        await this.onRoundEnd(matchId, event);
+        break;
+
+      case 'team_notice':
+        await this.onTeamNotice(matchId, event);
         break;
 
       case 'game_over':
@@ -556,11 +597,20 @@ class MatchRunner {
     if (!raw) return;
 
     const command = raw.replace(/^[.!\/]/, '').trim().toLowerCase();
+    const match = await loadMatch(matchId);
+
+    if (match.state === 'KNIFE_DECISION') {
+      const stay = command === 'stay';
+      const swap = command === 'switch' || command === 'swap';
+      if (!stay && !swap) return;
+      await this.onKnifeChatChoice(matchId, event, stay ? 'stay' : 'swap');
+      return;
+    }
+
     const readyUp = command === 'ready' || command === 'r';
     const readyDown = command === 'unready' || command === 'notready';
     if (!readyUp && !readyDown) return;
 
-    const match = await loadMatch(matchId);
     if (match.state !== 'WARMUP') return;
 
     if (!match.streamersReady) {
@@ -586,6 +636,37 @@ class MatchRunner {
       sayCommands(readyUp ? `${name} is ready` : `${name} is not ready`),
     );
     this.publish(matchId, { players: true });
+  }
+
+  private async onKnifeChatChoice(
+    matchId: string,
+    event: GameEvent,
+    choice: 'stay' | 'swap',
+  ): Promise<void> {
+    const match = await loadMatch(matchId);
+    if (match.state !== 'KNIFE_DECISION') return;
+
+    const player = event.actor;
+    if (!player) return;
+
+    const steamId = playerIdentity(player);
+    let team = this.teamOf(match.team1Side, player.side);
+    if ((!team || team === 0) && steamId) {
+      const row = await db().matchPlayer.findUnique({
+        where: { matchId_steamId: { matchId, steamId } },
+        select: { team: true },
+      });
+      team = row?.team ?? 0;
+    }
+    if (!match.knifeWinner || team !== match.knifeWinner) {
+      await this.send(
+        match,
+        sayCommands('Only the knife-round winners may choose !stay or !switch'),
+      );
+      return;
+    }
+
+    await this.decideKnife(matchId, choice);
   }
 
   /**
@@ -636,14 +717,45 @@ class MatchRunner {
     }
   }
 
-  private async onRoundEnd(matchId: string): Promise<void> {
+  private async onTeamNotice(matchId: string, event: GameEvent): Promise<void> {
     const match = await loadMatch(matchId);
     if (match.state !== 'KNIFE') return;
 
-    // The knife round is decided by whoever is left standing, and the server
-    // reports that as a normal round win. Which side won is read from the score
-    // that follows, so all this transition does is hand the choice to the
-    // winning team's operator.
+    const winner = winnerSideFromEvent(event);
+    if (!winner) return;
+    this.knifeWinningSide.set(matchId, winner);
+  }
+
+  private async onRoundEnd(matchId: string, event: GameEvent): Promise<void> {
+    const match = await loadMatch(matchId);
+    if (match.state !== 'KNIFE') return;
+
+    const winnerSide =
+      winnerSideFromEvent(event) ?? this.knifeWinningSide.get(matchId) ?? null;
+    const knifeWinner = winnerSide
+      ? this.teamOf(match.team1Side, winnerSide)
+      : null;
+
+    await db().match.update({
+      where: { id: matchId },
+      data: { knifeWinner: knifeWinner || null },
+    });
+
+    const winnerName =
+      knifeWinner === 1
+        ? match.team1Name
+        : knifeWinner === 2
+          ? match.team2Name
+          : 'Knife winners';
+
+    // Pause before the next freeze-time round starts so the match does not
+    // continue with knife loadouts (and never hits game-over from maxrounds 1).
+    await this.send(match, knifeDecisionCommands(winnerName)).catch(
+      (error: unknown) => {
+        logger.warn({ matchId, error }, 'could not pause after knife round');
+      },
+    );
+
     await this.transition(
       matchId,
       'KNIFE',
@@ -651,12 +763,20 @@ class MatchRunner {
       'knife round finished',
       false,
     );
+    this.publish(matchId, { knifeWinner: knifeWinner || null });
   }
 
   private async onGameOver(matchId: string, event: GameEvent): Promise<void> {
     const match = await loadMatch(matchId);
     if (match.state === 'FINISHED' || match.state === 'CANCELLED') return;
-    if (match.state === 'KNIFE' || match.state === 'KNIFE_DECISION') return;
+
+    // With the old mp_maxrounds 1 knife, CS2 fired game_over here and reset the
+    // session. Treat that as a knife decision instead of finishing the match.
+    if (match.state === 'KNIFE') {
+      await this.onRoundEnd(matchId, event);
+      return;
+    }
+    if (match.state === 'KNIFE_DECISION') return;
 
     const ctScore = Number(event.data.ctScore);
     const tScore = Number(event.data.tScore);
@@ -672,6 +792,8 @@ class MatchRunner {
     });
 
     this.clearPending(matchId);
+    this.stopStreamerNag(matchId);
+    this.knifeWinningSide.delete(matchId);
     ingest.setActiveMatch(match.instanceId, null);
     await this.transition(matchId, match.state, 'FINISHED', 'game over', true);
     await this.send(match, stopRecordingCommands()).catch(() => undefined);
@@ -975,9 +1097,68 @@ class MatchRunner {
     this.publish(matchId, { state: to, from, reason });
   }
 
+  private startStreamerNag(matchId: string): void {
+    this.stopStreamerNag(matchId);
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const match = await loadMatch(matchId);
+          if (match.state !== 'WARMUP' || match.streamersReady) {
+            this.stopStreamerNag(matchId);
+            return;
+          }
+          await this.send(match, sayCommands('Streamers are not ready'));
+        } catch (error: unknown) {
+          logger.warn({ matchId, error }, 'streamers-ready nag failed');
+          this.stopStreamerNag(matchId);
+        }
+      })();
+    }, STREAMERS_NAG_MS);
+    timer.unref?.();
+    this.streamerNags.set(matchId, timer);
+  }
+
+  private stopStreamerNag(matchId: string): void {
+    const timer = this.streamerNags.get(matchId);
+    if (timer) clearInterval(timer);
+    this.streamerNags.delete(matchId);
+  }
+
   private publish(matchId: string, payload: Record<string, unknown>): void {
     bus.publish(`match:${matchId}`, { matchId, ...payload });
   }
+}
+
+function winnerSideFromEvent(event: GameEvent): 'CT' | 'TERRORIST' | null {
+  const raw =
+    event.data.winner ??
+    event.data.to ??
+    event.data.team ??
+    event.data.notice ??
+    event.data.event ??
+    '';
+  const token = String(raw).toUpperCase();
+  if (!token) return null;
+  if (
+    token === 'CT' ||
+    token.includes('CTS_WIN') ||
+    token.includes('CT_WIN') ||
+    token.includes('BOMB_DEFUSED') ||
+    token.includes('TARGET_SAVED') ||
+    token.includes('HOSTAGES_RESCUED')
+  ) {
+    return 'CT';
+  }
+  if (
+    token === 'TERRORIST' ||
+    token === 'T' ||
+    token.includes('TERRORISTS_WIN') ||
+    token.includes('TERRORIST_WIN') ||
+    token.includes('TARGET_BOMBED')
+  ) {
+    return 'TERRORIST';
+  }
+  return null;
 }
 
 export const matches = new MatchRunner();

@@ -48,8 +48,13 @@ export function MatchRoomActions({
       const data = JSON.parse((event as MessageEvent<string>).data) as {
         state?: string;
         streamersReady?: boolean;
+        team1Side?: string;
       };
-      if (data.state || data.streamersReady !== undefined) {
+      if (
+        data.state ||
+        data.streamersReady !== undefined ||
+        data.team1Side !== undefined
+      ) {
         setMatch((current) => ({
           ...current,
           ...(data.state ? { state: data.state } : {}),
@@ -108,13 +113,13 @@ export function MatchRoomActions({
           <>
             <Action
               name="live:stay"
-              label={`${match.team1Name} stays`}
+              label="!stay (keep sides)"
               className={buttonClass}
               disabled={!canOperate}
             />
             <Action
               name="live:swap"
-              label="Swap sides"
+              label="!switch (swap sides)"
               className={secondaryButtonClass}
               disabled={!canOperate}
             />
