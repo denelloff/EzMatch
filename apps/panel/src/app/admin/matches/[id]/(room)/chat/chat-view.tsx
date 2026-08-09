@@ -46,9 +46,13 @@ export function MatchChat({
     if (!text || !canSend) return;
     setBusy(true);
     setError(null);
+    const safe = text.replace(/["\\;\n\r]/g, '');
+    const branded = safe.toUpperCase().startsWith('[EZ-MATCH]')
+      ? safe
+      : `[EZ-MATCH] ${safe}`;
     const result = await sendConsoleAction({
       instanceId,
-      command: `say ${text}`,
+      command: `say "${branded}"`,
     });
     setBusy(false);
     if (!result.ok) {
@@ -57,7 +61,7 @@ export function MatchChat({
     }
     setLines((current) => [
       ...current,
-      { ts: new Date().toISOString(), line: `> say ${text}`, local: true },
+      { ts: new Date().toISOString(), line: `> ${branded}`, local: true },
     ]);
     setValue('');
   };
@@ -65,8 +69,9 @@ export function MatchChat({
   return (
     <div className="flex h-[min(55vh,32rem)] flex-col gap-3">
       <p className="text-xs text-ink-400">
-        Messages go out as <span className="font-mono text-ink-300">say</span> on
-        the game server.
+        Messages go out as{' '}
+        <span className="font-mono text-ink-300">[EZ-MATCH]</span> on the game
+        server (colored when eZ-Match CSay is installed).
       </p>
       <div
         ref={viewport}

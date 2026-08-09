@@ -61,7 +61,7 @@ export function TeamForm({
   const [country, setCountry] = useState(defaults?.country ?? 'us');
 
   return (
-    <form action={formAction} className="space-y-4" encType="multipart/form-data">
+    <form action={formAction} className="space-y-4">
       {teamId ? <input type="hidden" name="teamId" value={teamId} /> : null}
       {state.error ? <Notice tone="danger">{state.error}</Notice> : null}
 
