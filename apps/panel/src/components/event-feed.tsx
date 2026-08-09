@@ -120,3 +120,4 @@ function formatValue(value: unknown): string {
   if (typeof value === 'object') return JSON.stringify(value).slice(0, 40);
   return String(value).slice(0, 40);
 }
+

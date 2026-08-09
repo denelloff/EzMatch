@@ -51,3 +51,4 @@ export function redactValues(line: string, secrets: readonly string[]): string {
 export function redact(line: string, secrets: readonly string[] = []): string {
   return redactValues(redactLine(line), secrets);
 }
+

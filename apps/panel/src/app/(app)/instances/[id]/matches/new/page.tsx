@@ -8,3 +8,4 @@ export default async function LegacyNewMatchRedirect({
   const { id } = await params;
   redirect(`/admin/instances/${id}/matches/new`);
 }
+

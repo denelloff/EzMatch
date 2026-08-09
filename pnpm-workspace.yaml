@@ -1,3 +1,5 @@
+# eZ-Match pnpm workspace.
 packages:
   - 'apps/*'
   - 'packages/*'
+

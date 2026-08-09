@@ -17,3 +17,4 @@ CREATE TABLE `match_demos` (
 
 -- AddForeignKey
 ALTER TABLE `match_demos` ADD CONSTRAINT `match_demos_matchId_fkey` FOREIGN KEY (`matchId`) REFERENCES `matches`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/session';
 import { getLocale, getT } from '@/lib/i18n';
 import { LanguageToggle } from '@/components/language-toggle';
-import { EzMatchLogo } from '@/components/pmatch-logo';
+import { EzMatchLogo } from '@/components/ezmatch-logo';
 import { LoginForm } from './login-form';
 
 export const dynamic = 'force-dynamic';

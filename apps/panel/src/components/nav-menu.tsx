@@ -127,3 +127,4 @@ export function NavMenu({ label, items }: { label: string; items: NavItem[] }) {
     </div>
   );
 }
+

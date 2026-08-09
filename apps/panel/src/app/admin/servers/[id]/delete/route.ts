@@ -115,3 +115,4 @@ function redirectWithError(request: Request, message: string) {
   url.searchParams.set('deleteError', message);
   return NextResponse.redirect(url, 303);
 }
+

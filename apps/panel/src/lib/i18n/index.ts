@@ -19,3 +19,4 @@ export async function getT(): Promise<Dictionary> {
 }
 
 export { getDictionary, isLocale, LOCALE_COOKIE, type Dictionary, type Locale };
+

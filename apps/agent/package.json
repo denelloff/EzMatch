@@ -2,6 +2,8 @@
   "name": "@ppanel/agent",
   "version": "0.1.0",
   "private": true,
+  "description": "eZ-Match game-host agent",
+
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
@@ -29,3 +31,4 @@
     "typescript": "^7.0.2"
   }
 }
+

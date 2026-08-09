@@ -123,7 +123,7 @@ body {
   border: 2px solid transparent;
 }
 
-@keyframes pmatch-fade-up {
+@keyframes ezmatch-fade-up {
   from {
     opacity: 0;
     transform: translateY(6px);
@@ -135,5 +135,5 @@ body {
 }
 
 .ezmatch-enter {
-  animation: pmatch-fade-up 320ms ease-out both;
+  animation: ezmatch-fade-up 320ms ease-out both;
 }

@@ -84,3 +84,4 @@ export function generateAgentToken(): { token: string; prefix: string } {
   const token = randomBytes(32).toString('base64url');
   return { token, prefix: token.slice(0, 8) };
 }
+

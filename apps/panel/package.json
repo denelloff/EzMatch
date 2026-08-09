@@ -2,6 +2,8 @@
   "name": "@ppanel/panel",
   "version": "0.1.0",
   "private": true,
+  "description": "eZ-Match web panel",
+
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
@@ -29,3 +31,4 @@
     "typescript": "^7.0.2"
   }
 }
+

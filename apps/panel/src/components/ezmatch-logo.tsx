@@ -66,6 +66,3 @@ export function EzMatchLogo({
     </Link>
   );
 }
-
-/** @deprecated Use EzMatchLogo */
-export const PMatchLogo = EzMatchLogo;

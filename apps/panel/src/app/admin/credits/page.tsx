@@ -71,3 +71,4 @@ export default async function AdminCreditsPage() {
     </div>
   );
 }
+

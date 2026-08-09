@@ -5,7 +5,7 @@ import { LIVE_MATCH_STATES } from '@/lib/match-state';
 import { getLocale, getT } from '@/lib/i18n';
 import { NavLink, NavMenu } from '@/components/nav-menu';
 import { LanguageToggle } from '@/components/language-toggle';
-import { EzMatchLogo } from '@/components/pmatch-logo';
+import { EzMatchLogo } from '@/components/ezmatch-logo';
 import { logoutAction } from '../login/actions';
 
 export const dynamic = 'force-dynamic';

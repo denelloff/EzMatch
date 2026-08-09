@@ -137,7 +137,7 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
       },
       {
         // Published by .github/workflows/publish-ez-csay.yml (tag ez-csay-v*).
-        // Repo was renamed PMatch → EzMatch; keep the release URL on EzMatch.
+        // GitHub release asset on denelloff/EzMatch (ez-csay-v* tags).
         kind: 'download-extract',
         url: `https://github.com/denelloff/EzMatch/releases/download/ez-csay-v${EZ_CSAY_VERSION}/EzCSay.zip`,
         archive: 'zip',

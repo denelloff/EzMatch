@@ -125,3 +125,4 @@ export default async function GlobalStatisticsPage() {
     </div>
   );
 }
+

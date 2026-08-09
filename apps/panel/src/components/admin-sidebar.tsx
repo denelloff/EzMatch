@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { EzMatchLogo } from '@/components/pmatch-logo';
+import { EzMatchLogo } from '@/components/ezmatch-logo';
 
 export interface AdminNavItem {
   href: string;

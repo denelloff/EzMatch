@@ -132,3 +132,4 @@ function tokensMatch(expected: string, provided: string): boolean {
   const b = Buffer.from(provided, 'utf8');
   return a.length === b.length && timingSafeEqual(a, b);
 }
+

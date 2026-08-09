@@ -87,3 +87,4 @@ export default async function WeaponStatisticsPage({
     </Card>
   );
 }
+

@@ -11,3 +11,4 @@ export function db(): PrismaClient {
   if (!client) throw new Error('Database is not initialised');
   return client;
 }
+

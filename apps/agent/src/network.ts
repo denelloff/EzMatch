@@ -68,3 +68,4 @@ export async function collectNetworkRates(): Promise<{
     return { networkRxBytesPerSec: 0, networkTxBytesPerSec: 0 };
   }
 }
+

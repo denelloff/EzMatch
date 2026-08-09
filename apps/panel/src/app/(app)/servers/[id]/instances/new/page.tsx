@@ -8,3 +8,4 @@ export default async function LegacyNewInstanceRedirect({
   const { id } = await params;
   redirect(`/admin/servers/${id}/instances/new`);
 }
+
