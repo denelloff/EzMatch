@@ -219,7 +219,7 @@ function describePhase(phase: string): string {
     case 'disk':
       return 'Checking free disk space';
     case 'network':
-      return 'Creating the ppanel Docker network';
+      return 'Creating the eZ-Match Docker network';
     case 'credentials':
       return 'Writing the agent credentials file';
     case 'agent':

@@ -1,4 +1,4 @@
-# PPanel
+# eZ-Match
 
 Self-hosted control panel for Counter-Strike 2 dedicated servers and matches.
 

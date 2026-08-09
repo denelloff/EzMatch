@@ -186,7 +186,7 @@ export const PLUGIN_DESCRIPTIONS: PluginCatalogEntry[] = [
     summary:
       'C# scripting framework. Install the with-runtime build, which ships the .NET runtime the container lacks.',
     caution:
-      'Links against CS2 binaries. A Valve patch often makes it segfault on boot (cs2.sh Segmentation fault) until a newer build is pinned. PPanel matches do not need it — remove it if the server will not start.',
+      'Links against CS2 binaries. A Valve patch often makes it segfault on boot (cs2.sh Segmentation fault) until a newer build is pinned. eZ-Match matches do not need it — remove it if the server will not start.',
     requires: ['metamod'],
   },
   {

@@ -1,5 +1,5 @@
 ---
-description: Визуальные правила панели PPanel — токены, контролы, состояния
+description: Визуальные правила панели eZ-Match — токены, контролы, состояния
 globs: apps/panel/**/*.{tsx,css}
 alwaysApply: false
 ---

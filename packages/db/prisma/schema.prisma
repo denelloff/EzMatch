@@ -273,7 +273,7 @@ model Match {
 }
 
 /// Index of GOTV recordings found in the instance volume. The file itself stays
-/// on the game host; PPanel only records where it is and how big it got.
+/// on the game host; eZ-Match only records where it is and how big it got.
 model MatchDemo {
   id         String   @id @default(cuid())
   matchId    String

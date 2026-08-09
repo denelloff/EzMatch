@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { zIsoDate } from './common.js';
 
 /**
- * A GOTV recording sitting in the instance volume. PPanel only indexes what the
+ * A GOTV recording sitting in the instance volume. eZ-Match only indexes what the
  * game wrote; it never renames or moves the files, so a demo stays findable on
  * the host even if the panel loses its database.
  */

@@ -772,7 +772,7 @@ class MatchRunner {
     const half = Math.floor(match.maxRounds / 2);
     const played = Number.isFinite(roundsPlayed) ? roundsPlayed : team1Score + team2Score;
 
-    // CS2 swaps the sides itself at halftime; PPanel only has to follow, or the
+    // CS2 swaps the sides itself at halftime; eZ-Match only has to follow, or the
     // score would land on the wrong team for the whole second half.
     if (played === half && match.state === 'LIVE') {
       await db().match.update({
