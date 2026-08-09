@@ -23,13 +23,8 @@ Thumbs.db
 .turbo/
 *.tsbuildinfo
 
+# Cursor IDE / local rules (not for GitHub)
+.cursor/
+
 # Agent runtime state (contains the agent token in plaintext)
 apps/agent/.state/
-
-# Prisma generated client
-packages/db/src/generated/
-
-# Uploaded team logos (keep directory via .gitkeep)
-apps/panel/public/uploads/teams/*
-!apps/panel/public/uploads/teams/.gitkeep
-

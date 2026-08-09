@@ -1,8 +1,8 @@
 {
-  "name": "ppanel",
+  "name": "ezmatch-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "eZ-Match - control panel for CS2 dedicated servers and matches",
+  "description": "eZ-Match game-host agent (GHCR image ez-agent)",
   "engines": {
     "node": ">=20.11"
   },
@@ -10,13 +10,8 @@
   "scripts": {
     "build": "pnpm -r --filter \"./packages/**\" build && pnpm -r --filter \"./apps/**\" build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint",
-    "db:generate": "pnpm --filter @ppanel/db generate",
-    "db:migrate": "pnpm --filter @ppanel/db migrate",
-    "db:push": "pnpm --filter @ppanel/db push",
-    "dev:hub": "pnpm --filter @ppanel/hub dev",
-    "dev:panel": "pnpm --filter @ppanel/panel dev",
-    "dev:agent": "pnpm --filter @ppanel/agent dev"
+    "dev:agent": "pnpm --filter @ppanel/agent dev",
+    "build:agent": "pnpm --filter @ppanel/protocol build && pnpm --filter @ppanel/agent build"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
