@@ -20,6 +20,7 @@ export interface MatchRoomActionSnapshot {
   team1Name: string;
   team2Name: string;
   knifeRound: boolean;
+  knifeWinner: number | null;
   streamersReady: boolean;
 }
 
@@ -49,17 +50,22 @@ export function MatchRoomActions({
         state?: string;
         streamersReady?: boolean;
         team1Side?: string;
+        knifeWinner?: number | null;
       };
       if (
         data.state ||
         data.streamersReady !== undefined ||
-        data.team1Side !== undefined
+        data.team1Side !== undefined ||
+        data.knifeWinner !== undefined
       ) {
         setMatch((current) => ({
           ...current,
           ...(data.state ? { state: data.state } : {}),
           ...(data.streamersReady !== undefined
             ? { streamersReady: data.streamersReady }
+            : {}),
+          ...(data.knifeWinner !== undefined
+            ? { knifeWinner: data.knifeWinner }
             : {}),
         }));
         router.refresh();
@@ -92,7 +98,7 @@ export function MatchRoomActions({
         ) : null}
 
         {match.state === 'WARMUP' ? (
-          match.knifeRound ? (
+          match.knifeRound && !match.knifeWinner ? (
             <Action
               name="knife"
               label="Start knife round"
@@ -100,12 +106,19 @@ export function MatchRoomActions({
               disabled={!canOperate}
             />
           ) : (
-            <Action
-              name="live"
-              label="Go live"
-              className={buttonClass}
-              disabled={!canOperate}
-            />
+            <>
+              {match.knifeWinner ? (
+                <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-100">
+                  Waiting for !ready / !r
+                </span>
+              ) : null}
+              <Action
+                name="live"
+                label="Go live"
+                className={buttonClass}
+                disabled={!canOperate}
+              />
+            </>
           )
         ) : null}
 

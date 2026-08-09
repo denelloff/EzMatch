@@ -13,6 +13,7 @@ import {
   listBackupsCommands,
   parseBackupList,
   pauseCommands,
+  postKnifeWarmupCommands,
   prepareCommands,
   restoreCommands,
   sayCommands,
@@ -38,6 +39,12 @@ const CONFIRM_TIMEOUT_MS = 90_000;
 
 /** Warmup nag: remind players that casters have not unlocked !ready yet. */
 const STREAMERS_NAG_MS = 30_000;
+
+/** Warmup nag: remind players to type !ready / !r (after streamers are ready). */
+const READY_NAG_MS = 22_500;
+
+const READY_NAG_MESSAGE =
+  'To start the game type !ready or !r in chat';
 
 interface Pending {
   toState: MatchState;
@@ -118,6 +125,8 @@ class MatchRunner {
   private readonly pending = new Map<string, Pending>();
   /** Warmup intervals that spam "Streamers are not ready" every 30s. */
   private readonly streamerNags = new Map<string, NodeJS.Timeout>();
+  /** Warmup intervals that remind players to !ready after streamers unlock. */
+  private readonly readyNags = new Map<string, NodeJS.Timeout>();
   /** Last knife-round winning side seen in logs before round_end. */
   private readonly knifeWinningSide = new Map<string, 'CT' | 'TERRORIST'>();
 
@@ -146,8 +155,11 @@ class MatchRunner {
     });
     for (const match of live) {
       ingest.setActiveMatch(match.instanceId, match.id);
-      if (match.state === 'WARMUP' && !match.streamersReady) {
+      if (match.state !== 'WARMUP') continue;
+      if (!match.streamersReady) {
         this.startStreamerNag(match.id);
+      } else {
+        this.startReadyNag(match.id);
       }
     }
     if (live.length > 0) {
@@ -263,6 +275,7 @@ class MatchRunner {
       ),
     );
     this.publish(matchId, { streamersReady: true });
+    this.startReadyNag(matchId);
   }
 
   async startKnife(matchId: string): Promise<void> {
@@ -276,6 +289,7 @@ class MatchRunner {
     }
 
     this.stopStreamerNag(matchId);
+    this.stopReadyNag(matchId);
     this.knifeWinningSide.delete(matchId);
     await this.sendExpecting(match, knifeCommands(settingsOf(match)), {
       toState: 'KNIFE',
@@ -299,22 +313,35 @@ class MatchRunner {
       this.publish(matchId, {
         team1Side: match.team1Side === 'CT' ? 'TERRORIST' : 'CT',
       });
-      await this.send(
-        match,
-        sayCommands('Sides swapped — going live'),
-      );
+      await this.send(match, sayCommands('Sides swapped — back to warmup'));
     } else {
-      await this.send(match, sayCommands('Sides stay — going live'));
+      await this.send(match, sayCommands('Sides stay — back to warmup'));
     }
 
     this.knifeWinningSide.delete(matchId);
-    await this.transition(matchId, 'KNIFE_DECISION', 'LIVE', `knife: ${choice}`, false);
-    await this.goLive(matchId);
+
+    // Both teams must !ready again before official live config.
+    await db().matchPlayer.updateMany({
+      where: { matchId },
+      data: { ready: false },
+    });
+
+    await this.send(match, postKnifeWarmupCommands(settingsOf(match)));
+    await this.transition(
+      matchId,
+      'KNIFE_DECISION',
+      'WARMUP',
+      `knife: ${choice}`,
+      false,
+    );
+    this.publish(matchId, { players: true });
+    this.startReadyNag(matchId);
   }
 
   async goLive(matchId: string): Promise<void> {
     const match = await loadMatch(matchId);
     this.stopStreamerNag(matchId);
+    this.stopReadyNag(matchId);
 
     await this.sendExpecting(match, liveCommands(settingsOf(match)), {
       toState: 'LIVE',
@@ -397,6 +424,7 @@ class MatchRunner {
     if (match.state === 'FINISHED' || match.state === 'CANCELLED') return;
 
     this.stopStreamerNag(matchId);
+    this.stopReadyNag(matchId);
     this.knifeWinningSide.delete(matchId);
     this.clearPending(matchId);
     await this.send(match, stopRecordingCommands()).catch(() => undefined);
@@ -426,6 +454,7 @@ class MatchRunner {
 
     this.clearPending(matchId);
     this.stopStreamerNag(matchId);
+    this.stopReadyNag(matchId);
     this.knifeWinningSide.delete(matchId);
     if (match.state !== 'DRAFT') {
       await this.send(match, endCommands()).catch(() => undefined);
@@ -636,6 +665,36 @@ class MatchRunner {
       sayCommands(readyUp ? `${name} is ready` : `${name} is not ready`),
     );
     this.publish(matchId, { players: true });
+
+    if (readyUp) {
+      await this.maybeAutoGoLive(matchId);
+    }
+  }
+
+  /**
+   * After streamers unlock !ready: when every connected team1/team2 player is
+   * ready (and each side has at least one), start the official match.
+   * Pre-knife warmup still waits for the panel/command knife start.
+   */
+  private async maybeAutoGoLive(matchId: string): Promise<void> {
+    const match = await loadMatch(matchId);
+    if (match.state !== 'WARMUP' || !match.streamersReady) return;
+    // Knife still started from the panel until a winner has picked sides.
+    if (match.knifeRound && !match.knifeWinner) return;
+
+    const players = await db().matchPlayer.findMany({
+      where: { matchId, connected: true, team: { in: [1, 2] } },
+      select: { team: true, ready: true },
+    });
+    const team1 = players.filter((row) => row.team === 1);
+    const team2 = players.filter((row) => row.team === 2);
+    if (team1.length === 0 || team2.length === 0) return;
+    if (!team1.every((row) => row.ready) || !team2.every((row) => row.ready)) {
+      return;
+    }
+
+    await this.send(match, sayCommands('Both teams are ready — going live'));
+    await this.goLive(matchId);
   }
 
   private async onKnifeChatChoice(
@@ -793,6 +852,7 @@ class MatchRunner {
 
     this.clearPending(matchId);
     this.stopStreamerNag(matchId);
+    this.stopReadyNag(matchId);
     this.knifeWinningSide.delete(matchId);
     ingest.setActiveMatch(match.instanceId, null);
     await this.transition(matchId, match.state, 'FINISHED', 'game over', true);
@@ -1122,6 +1182,33 @@ class MatchRunner {
     const timer = this.streamerNags.get(matchId);
     if (timer) clearInterval(timer);
     this.streamerNags.delete(matchId);
+  }
+
+  private startReadyNag(matchId: string): void {
+    this.stopReadyNag(matchId);
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const match = await loadMatch(matchId);
+          if (match.state !== 'WARMUP' || !match.streamersReady) {
+            this.stopReadyNag(matchId);
+            return;
+          }
+          await this.send(match, sayCommands(READY_NAG_MESSAGE));
+        } catch (error: unknown) {
+          logger.warn({ matchId, error }, 'ready nag failed');
+          this.stopReadyNag(matchId);
+        }
+      })();
+    }, READY_NAG_MS);
+    timer.unref?.();
+    this.readyNags.set(matchId, timer);
+  }
+
+  private stopReadyNag(matchId: string): void {
+    const timer = this.readyNags.get(matchId);
+    if (timer) clearInterval(timer);
+    this.readyNags.delete(matchId);
   }
 
   private publish(matchId: string, payload: Record<string, unknown>): void {

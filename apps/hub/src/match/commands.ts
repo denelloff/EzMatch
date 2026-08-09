@@ -167,7 +167,42 @@ export function knifeDecisionCommands(winnerName: string): ConsoleCommand[] {
   ];
 }
 
-/** Undoes the knife settings and starts the real match. */
+/**
+ * Warmup after knife side pick: infinite timer/money, free armor+helmet.
+ * Teams must !ready again before the official live config starts.
+ */
+export function postKnifeWarmupCommands(settings: MatchSettings): ConsoleCommand[] {
+  return [
+    cmd('mp_unpause_match'),
+    cmd('mp_give_player_c4 1'),
+    // 2 = kevlar + helmet
+    cmd('mp_free_armor 2'),
+    cmd('mp_ct_default_primary ""'),
+    cmd('mp_t_default_primary ""'),
+    cmd('mp_ct_default_secondary weapon_hkp2000'),
+    cmd('mp_t_default_secondary weapon_glock'),
+    cmd('mp_ct_default_melee weapon_knife'),
+    cmd('mp_t_default_melee weapon_knife'),
+    cmd('mp_startmoney 16000'),
+    cmd('mp_maxmoney 16000'),
+    cmd('mp_buytime 9999'),
+    cmd('mp_buy_anywhere 1'),
+    cmd('mp_death_drop_gun 1'),
+    cmd('mp_death_drop_grenade 1'),
+    cmd(`mp_maxrounds ${settings.maxRounds}`),
+    cmd('mp_halftime 1'),
+    cmd('mp_warmup_pausetimer 1'),
+    cmd('mp_warmuptime 9999'),
+    cmd('mp_do_warmup_period 1'),
+    cmd('mp_warmup_start'),
+    cmd(
+      matchSay('Warmup — both teams type !ready or !r to start the match'),
+      500,
+    ),
+  ];
+}
+
+/** Official competitive live config after both teams ready. */
 export function liveCommands(settings: MatchSettings): ConsoleCommand[] {
   return [
     cmd('mp_give_player_c4 1'),
@@ -181,6 +216,7 @@ export function liveCommands(settings: MatchSettings): ConsoleCommand[] {
     cmd('mp_startmoney 800'),
     cmd('mp_maxmoney 16000'),
     cmd('mp_buytime 20'),
+    cmd('mp_buy_anywhere 0'),
     cmd('mp_death_drop_gun 1'),
     cmd('mp_death_drop_grenade 1'),
     cmd('mp_roundtime 1.92'),
@@ -195,7 +231,13 @@ export function liveCommands(settings: MatchSettings): ConsoleCommand[] {
     // Three restarts: the first two clear scores and inventories, the third is
     // what players see as "LIVE". Fewer restarts leaves knife-round money.
     cmd('mp_restartgame 3', 4000),
-    cmd(matchSay(`${settings.team1Name} vs ${settings.team2Name} — LIVE`)),
+    cmd(matchSay('LIVE'), 500),
+    cmd(matchSay('LIVE'), 700),
+    cmd(matchSay('LIVE'), 700),
+    cmd(
+      matchSay(`${settings.team1Name} vs ${settings.team2Name} — LIVE`),
+      900,
+    ),
   ];
 }
 

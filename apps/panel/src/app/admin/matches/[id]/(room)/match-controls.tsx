@@ -46,7 +46,7 @@ const STATE_HINT: Record<string, string> = {
   DRAFT:
     'Nothing has been sent to the server yet. Preparing applies the match convars and changes the map.',
   WARMUP:
-    'Warmup is frozen so it will not end on its own. Start when both teams are in.',
+    'Warmup is frozen. After streamers unlock, both teams type !ready or !r to start (or force Go live).',
   KNIFE: 'Knife round in progress. The winner picks a side when it ends.',
   KNIFE_DECISION: 'Knife winners: type !stay or !switch (or use the panel buttons).',
   LIVE: 'Match is live. The score comes from the server, not from eZ-Match counting rounds.',
@@ -188,7 +188,7 @@ export function MatchControls({
                 disabled={!canOperate}
               />
             )}
-            {match.knifeRound ? (
+            {match.knifeRound && !match.knifeWinner ? (
               <Action
                 name="knife"
                 label="Start knife round"
@@ -196,12 +196,19 @@ export function MatchControls({
                 disabled={!canOperate}
               />
             ) : (
-              <Action
-                name="live"
-                label="Go live"
-                className={buttonClass}
-                disabled={!canOperate}
-              />
+              <>
+                {match.knifeWinner ? (
+                  <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-100">
+                    Waiting for !ready / !r
+                  </span>
+                ) : null}
+                <Action
+                  name="live"
+                  label="Go live"
+                  className={buttonClass}
+                  disabled={!canOperate}
+                />
+              </>
             )}
           </>
         ) : null}

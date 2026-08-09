@@ -99,6 +99,7 @@ export default async function AdminMatchRoomLayout({
               team1Name: match.team1Name,
               team2Name: match.team2Name,
               knifeRound: match.knifeRound,
+              knifeWinner: match.knifeWinner,
               streamersReady: match.streamersReady,
             }}
             canOperate={hasRole(user, 'OPERATOR')}
