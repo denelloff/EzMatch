@@ -1,8 +1,10 @@
 import { requireRole } from '@/lib/auth';
 import { getT } from '@/lib/i18n';
+import { getDefaultFreezetime } from '@/lib/match-defaults';
 import { listAllMaps } from '@/lib/maps';
 import { Badge, Card, CardHeader } from '@/components/ui';
 import { AddMapForm, MapRowActions } from './map-forms';
+import { MatchDefaultsForm } from './match-defaults-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +13,10 @@ const POOL_ORDER = ['ACTIVE_DUTY', 'COMPETITIVE', 'CUSTOM'] as const;
 export default async function AdminSettingsPage() {
   await requireRole('ADMIN');
   const t = await getT();
-  const maps = await listAllMaps();
+  const [maps, defaultFreezetime] = await Promise.all([
+    listAllMaps(),
+    getDefaultFreezetime(),
+  ]);
 
   const byPool = POOL_ORDER.map((pool) => ({
     pool,
@@ -36,6 +41,24 @@ export default async function AdminSettingsPage() {
         <h1 className="text-lg font-semibold text-ink-100">{t.settingsTitle}</h1>
         <p className="mt-1 text-sm text-ink-400">{t.settingsDescription}</p>
       </div>
+
+      <Card>
+        <CardHeader
+          title={t.settingsMatchDefaultsTitle}
+          description={t.settingsMatchDefaultsDescription}
+        />
+        <div className="px-5 py-5">
+          <MatchDefaultsForm
+            freezetime={defaultFreezetime}
+            labels={{
+              freezetime: t.settingsDefaultFreezetime,
+              freezetimeHint: t.settingsDefaultFreezetimeHint,
+              submit: t.settingsMatchDefaultsSave,
+              saved: t.settingsMatchDefaultsSaved,
+            }}
+          />
+        </div>
+      </Card>
 
       <Card>
         <CardHeader

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { assertRole } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getT } from '@/lib/i18n';
+import { getDefaultFreezetime } from '@/lib/match-defaults';
 import { listEnabledMaps } from '@/lib/maps';
 import { MatchCreateForm } from '@/app/admin/matches/new/match-create-form';
 
@@ -17,7 +18,7 @@ export default async function NewMatchOnInstancePage({
   const t = await getT();
   const { id } = await params;
 
-  const [instance, teams, maps] = await Promise.all([
+  const [instance, teams, maps, defaultFreezetime] = await Promise.all([
     prisma.gameInstance.findUnique({
       where: { id },
       select: {
@@ -45,6 +46,7 @@ export default async function NewMatchOnInstancePage({
       },
     }),
     listEnabledMaps(),
+    getDefaultFreezetime(),
   ]);
   if (!instance) notFound();
 
@@ -80,6 +82,7 @@ export default async function NewMatchOnInstancePage({
         maps={maps}
         defaultInstanceId={servers[0]?.id}
         defaultMap={instance.startMap}
+        defaultFreezetime={defaultFreezetime}
         cancelHref={`/admin/instances/${instance.id}`}
         labels={{
           teamCt: t.matchTeamCt,
@@ -92,6 +95,8 @@ export default async function NewMatchOnInstancePage({
           map: t.matchMap,
           mr: t.matchMr,
           mrHint: t.matchMrHint,
+          freezetime: t.matchFreezetime,
+          freezetimeHint: t.matchFreezetimeHint,
           knife: t.matchKnife,
           knifeHint: t.matchKnifeHint,
           overtime: t.matchOvertime,

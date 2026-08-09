@@ -240,6 +240,8 @@ model Match {
   overtimeRounds  Int     @default(6)
   /// mp_overtime_startmoney (typically 10000 or 16000).
   overtimeStartMoney Int  @default(10000)
+  /// mp_freezetime in seconds (Valve competitive default is 15).
+  freezetime      Int     @default(15)
   knifeRound      Boolean @default(true)
   /// Winner of the knife round: 1, 2 or null.
   knifeWinner     Int?
@@ -420,6 +422,15 @@ enum MapPool {
   ACTIVE_DUTY
   COMPETITIVE
   CUSTOM
+}
+
+/// Panel-wide key/value defaults (e.g. match.defaultFreezetime).
+model AppSetting {
+  key       String   @id @db.VarChar(64)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
 }
 
 /// Maps offered in match / instance forms. Official pools are seeded; CUSTOM

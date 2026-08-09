@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { requireRole } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getT } from '@/lib/i18n';
+import { getDefaultFreezetime } from '@/lib/match-defaults';
 import { listEnabledMaps } from '@/lib/maps';
 import { MatchCreateForm } from './match-create-form';
 
@@ -11,7 +12,7 @@ export default async function AdminCreateMatchPage() {
   await requireRole('OPERATOR');
   const t = await getT();
 
-  const [teams, running, maps] = await Promise.all([
+  const [teams, running, maps, defaultFreezetime] = await Promise.all([
     prisma.team.findMany({
       orderBy: { name: 'asc' },
       select: {
@@ -39,6 +40,7 @@ export default async function AdminCreateMatchPage() {
       },
     }),
     listEnabledMaps(),
+    getDefaultFreezetime(),
   ]);
 
   const freeServers = running
@@ -68,6 +70,7 @@ export default async function AdminCreateMatchPage() {
         teams={teams}
         servers={freeServers}
         maps={maps}
+        defaultFreezetime={defaultFreezetime}
         cancelHref="/admin/matches"
         labels={{
           teamCt: t.matchTeamCt,
@@ -80,6 +83,8 @@ export default async function AdminCreateMatchPage() {
           map: t.matchMap,
           mr: t.matchMr,
           mrHint: t.matchMrHint,
+          freezetime: t.matchFreezetime,
+          freezetimeHint: t.matchFreezetimeHint,
           knife: t.matchKnife,
           knifeHint: t.matchKnifeHint,
           overtime: t.matchOvertime,

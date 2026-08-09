@@ -40,8 +40,14 @@ const CONFIRM_TIMEOUT_MS = 90_000;
 /** Warmup nag: remind players that casters have not unlocked !ready yet. */
 const STREAMERS_NAG_MS = 30_000;
 
-/** Warmup nag: remind players to type !ready / !r (after streamers are ready). */
+/** Warmup nag: remind players to type !ready / !r to start the knife round. */
+const KNIFE_READY_NAG_MS = 15_000;
+
+/** Warmup nag: remind players to type !ready / !r to go live (post-knife / no knife). */
 const READY_NAG_MS = 22_500;
+
+const KNIFE_READY_NAG_MESSAGE =
+  'To start the knife round type !ready or !r in chat';
 
 const READY_NAG_MESSAGE =
   'To start the game type !ready or !r in chat';
@@ -96,6 +102,7 @@ function settingsOf(match: NonNullable<MatchRow>): MatchSettings {
     overtimeEnabled: match.overtimeEnabled,
     overtimeRounds: match.overtimeRounds,
     overtimeStartMoney: match.overtimeStartMoney,
+    freezetime: match.freezetime,
     backupPrefix: match.backupPrefix,
     joinPassword: match.joinPasswordEnc
       ? decryptSecret(match.joinPasswordEnc, loadMasterKey())
@@ -151,6 +158,8 @@ class MatchRunner {
         instanceId: true,
         state: true,
         streamersReady: true,
+        knifeRound: true,
+        knifeWinner: true,
       },
     });
     for (const match of live) {
@@ -159,7 +168,8 @@ class MatchRunner {
       if (!match.streamersReady) {
         this.startStreamerNag(match.id);
       } else {
-        this.startReadyNag(match.id);
+        const preKnife = match.knifeRound && !match.knifeWinner;
+        this.startReadyNag(match.id, preKnife ? 'knife' : 'live');
       }
     }
     if (live.length > 0) {
@@ -268,14 +278,12 @@ class MatchRunner {
       where: { id: matchId },
       data: { streamersReady: true },
     });
-    await this.send(
-      match,
-      sayCommands(
-        'Streamers are ready. Players may type !ready when you are ready.',
-      ),
-    );
+    const readyHint = match.knifeRound
+      ? 'Streamers are ready. Type !ready or !r to start the knife round.'
+      : 'Streamers are ready. Type !ready or !r when both teams are ready to start.';
+    await this.send(match, sayCommands(readyHint));
     this.publish(matchId, { streamersReady: true });
-    this.startReadyNag(matchId);
+    this.startReadyNag(matchId, match.knifeRound ? 'knife' : 'live');
   }
 
   async startKnife(matchId: string): Promise<void> {
@@ -335,7 +343,7 @@ class MatchRunner {
       false,
     );
     this.publish(matchId, { players: true });
-    this.startReadyNag(matchId);
+    this.startReadyNag(matchId, 'live');
   }
 
   async goLive(matchId: string): Promise<void> {
@@ -673,14 +681,13 @@ class MatchRunner {
 
   /**
    * After streamers unlock !ready: when every connected team1/team2 player is
-   * ready (and each side has at least one), start the official match.
-   * Pre-knife warmup still waits for the panel/command knife start.
+   * ready (and each side has at least one):
+   * - knife enabled and not played yet → start knife
+   * - otherwise (knife off, or post-knife warmup) → go LIVE
    */
   private async maybeAutoGoLive(matchId: string): Promise<void> {
     const match = await loadMatch(matchId);
     if (match.state !== 'WARMUP' || !match.streamersReady) return;
-    // Knife still started from the panel until a winner has picked sides.
-    if (match.knifeRound && !match.knifeWinner) return;
 
     const players = await db().matchPlayer.findMany({
       where: { matchId, connected: true, team: { in: [1, 2] } },
@@ -690,6 +697,15 @@ class MatchRunner {
     const team2 = players.filter((row) => row.team === 2);
     if (team1.length === 0 || team2.length === 0) return;
     if (!team1.every((row) => row.ready) || !team2.every((row) => row.ready)) {
+      return;
+    }
+
+    if (match.knifeRound && !match.knifeWinner) {
+      await this.send(
+        match,
+        sayCommands('Both teams are ready — starting knife round'),
+      );
+      await this.startKnife(matchId);
       return;
     }
 
@@ -1184,8 +1200,15 @@ class MatchRunner {
     this.streamerNags.delete(matchId);
   }
 
-  private startReadyNag(matchId: string): void {
+  /**
+   * `knife` — pre-knife warmup (every 15s).
+   * `live` — post-knife / knife-disabled warmup (every ~22.5s).
+   */
+  private startReadyNag(matchId: string, kind: 'knife' | 'live'): void {
     this.stopReadyNag(matchId);
+    const intervalMs = kind === 'knife' ? KNIFE_READY_NAG_MS : READY_NAG_MS;
+    const message =
+      kind === 'knife' ? KNIFE_READY_NAG_MESSAGE : READY_NAG_MESSAGE;
     const timer = setInterval(() => {
       void (async () => {
         try {
@@ -1194,13 +1217,18 @@ class MatchRunner {
             this.stopReadyNag(matchId);
             return;
           }
-          await this.send(match, sayCommands(READY_NAG_MESSAGE));
+          // If knife finished while this nag was running, switch copy.
+          const preKnife = match.knifeRound && !match.knifeWinner;
+          await this.send(
+            match,
+            sayCommands(preKnife ? KNIFE_READY_NAG_MESSAGE : message),
+          );
         } catch (error: unknown) {
           logger.warn({ matchId, error }, 'ready nag failed');
           this.stopReadyNag(matchId);
         }
       })();
-    }, READY_NAG_MS);
+    }, intervalMs);
     timer.unref?.();
     this.readyNags.set(matchId, timer);
   }

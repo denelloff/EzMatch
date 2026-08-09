@@ -59,6 +59,7 @@ export default async function EditMatchPage({
           overtimeEnabled: match.overtimeEnabled,
           overtimeRounds: match.overtimeRounds,
           overtimeStartMoney: match.overtimeStartMoney,
+          freezetime: match.freezetime,
           knifeRound: match.knifeRound,
           hasJoinPassword: Boolean(match.joinPasswordEnc),
         }}
@@ -69,6 +70,8 @@ export default async function EditMatchPage({
           team1: t.matchTeamCt,
           team2: t.matchTeamT,
           mr: t.matchMr,
+          freezetime: t.matchFreezetime,
+          freezetimeHint: t.matchFreezetimeHint,
           knife: t.matchKnife,
           overtime: t.matchOvertime,
           overtimeMr: t.matchOvertimeMr,

@@ -157,6 +157,8 @@ const en = {
   matchMap: 'Map',
   matchMr: 'Max rounds',
   matchMrHint: 'MR12 = 24 total rounds (12 per half).',
+  matchFreezetime: 'Freezetime',
+  matchFreezetimeHint: 'Seconds before each LIVE round (Valve competitive = 15).',
   matchKnife: 'Knife round',
   matchKnifeHint: 'Winner picks stay/swap before the match goes live.',
   matchOvertime: 'Overtime on a tie',
@@ -184,6 +186,13 @@ const en = {
 
   settingsTitle: 'Settings',
   settingsDescription: 'Panel defaults used when creating matches and servers.',
+  settingsMatchDefaultsTitle: 'Match defaults',
+  settingsMatchDefaultsDescription:
+    'Values prefilled when creating a new match. Each match can still override them.',
+  settingsDefaultFreezetime: 'Default freezetime',
+  settingsDefaultFreezetimeHint: 'mp_freezetime in seconds (0–60). Valve competitive is 15.',
+  settingsMatchDefaultsSave: 'Save defaults',
+  settingsMatchDefaultsSaved: 'Defaults saved.',
   settingsMapsTitle: 'Maps',
   settingsMapsDescription:
     'Official Active Duty pool plus competitive extras. Add workshop or custom changelevel names below.',
@@ -519,6 +528,8 @@ const ru: Dictionary = {
   matchMap: 'Карта',
   matchMr: 'Число раундов',
   matchMrHint: 'MR12 = 24 раунда всего (по 12 в половине).',
+  matchFreezetime: 'Freezetime',
+  matchFreezetimeHint: 'Секунды перед каждым LIVE-раундом (Valve competitive = 15).',
   matchKnife: 'Ножевой раунд',
   matchKnifeHint: 'Победитель выбирает stay/swap перед стартом матча.',
   matchOvertime: 'Овертайм при ничьей',
@@ -546,6 +557,13 @@ const ru: Dictionary = {
 
   settingsTitle: 'Настройки',
   settingsDescription: 'Параметры панели для создания матчей и серверов.',
+  settingsMatchDefaultsTitle: 'Дефолты матча',
+  settingsMatchDefaultsDescription:
+    'Значения при создании нового матча. В каждом матче их можно переопределить.',
+  settingsDefaultFreezetime: 'Freezetime по умолчанию',
+  settingsDefaultFreezetimeHint: 'mp_freezetime в секундах (0–60). Valve competitive — 15.',
+  settingsMatchDefaultsSave: 'Сохранить',
+  settingsMatchDefaultsSaved: 'Сохранено.',
   settingsMapsTitle: 'Карты',
   settingsMapsDescription:
     'Официальный Active Duty и competitive-карты. Ниже можно добавить свои changelevel-имена.',

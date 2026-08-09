@@ -7,6 +7,11 @@ import { z } from 'zod';
 import { assertRole, audit, ForbiddenError } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { hubFetch, HubError } from '@/lib/hub';
+import {
+  DEFAULT_FREEZETIME,
+  FREEZETIME_MAX,
+  FREEZETIME_MIN,
+} from '@/lib/match-defaults';
 import { seal } from '@/lib/secrets';
 
 const createSchema = z.object({
@@ -31,6 +36,11 @@ const createSchema = z.object({
     .int()
     .min(0)
     .max(16_000),
+  freezetime: z.coerce
+    .number()
+    .int()
+    .min(FREEZETIME_MIN)
+    .max(FREEZETIME_MAX),
   knifeRound: z.boolean(),
   joinPassword: z.string().max(64).optional(),
 });
@@ -60,6 +70,7 @@ export async function createMatchAction(
       overtimeEnabled: formData.get('overtimeEnabled') === 'on',
       overtimeRounds: formData.get('overtimeRounds') || 6,
       overtimeStartMoney: formData.get('overtimeStartMoney') || 10_000,
+      freezetime: formData.get('freezetime') || DEFAULT_FREEZETIME,
       knifeRound: formData.get('knifeRound') === 'on',
       joinPassword: String(formData.get('joinPassword') ?? '').trim() || undefined,
     });
@@ -124,6 +135,7 @@ export async function createMatchAction(
         overtimeEnabled: input.overtimeEnabled,
         overtimeRounds: input.overtimeRounds,
         overtimeStartMoney: input.overtimeStartMoney,
+        freezetime: input.freezetime,
         knifeRound: input.knifeRound,
         // The prefix scopes round backups to this match, so a restore can never
         // reach into a previous one played on the same server.
@@ -142,6 +154,7 @@ export async function createMatchAction(
       team2Id: input.team2Id ?? null,
       overtimeRounds: input.overtimeRounds,
       overtimeStartMoney: input.overtimeStartMoney,
+      freezetime: input.freezetime,
     });
   } catch (error) {
     if (error instanceof ForbiddenError) {

@@ -4,9 +4,19 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { assertRole, audit, ForbiddenError } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import {
+  FREEZETIME_MAX,
+  FREEZETIME_MIN,
+  setDefaultFreezetime,
+} from '@/lib/match-defaults';
 import { MAP_NAME_RE } from '@/lib/maps';
 
 export interface MapFormState {
+  error: string | null;
+  ok: boolean;
+}
+
+export interface MatchDefaultsState {
   error: string | null;
   ok: boolean;
 }
@@ -126,4 +136,51 @@ export async function deleteMapAction(formData: FormData): Promise<void> {
 
   revalidatePath('/admin/settings');
   revalidatePath('/admin/matches/new');
+}
+
+const freezetimeSchema = z.object({
+  freezetime: z.coerce
+    .number()
+    .int()
+    .min(FREEZETIME_MIN)
+    .max(FREEZETIME_MAX),
+});
+
+export async function updateMatchDefaultsAction(
+  _prev: MatchDefaultsState,
+  formData: FormData,
+): Promise<MatchDefaultsState> {
+  try {
+    const user = await assertRole('ADMIN');
+    const parsed = freezetimeSchema.safeParse({
+      freezetime: formData.get('freezetime'),
+    });
+    if (!parsed.success) {
+      return {
+        error: parsed.error.issues[0]?.message ?? 'Invalid freezetime',
+        ok: false,
+      };
+    }
+
+    const freezetime = await setDefaultFreezetime(parsed.data.freezetime);
+    await audit(user, 'settings.match_defaults', 'app_setting', 'match', {
+      defaultFreezetime: freezetime,
+    });
+
+    revalidatePath('/admin/settings');
+    revalidatePath('/admin/matches/new');
+    return { error: null, ok: true };
+  } catch (error) {
+    if (isRedirect(error)) throw error;
+    if (error instanceof ForbiddenError) {
+      return {
+        error: 'You do not have permission to change settings.',
+        ok: false,
+      };
+    }
+    return {
+      error: error instanceof Error ? error.message : 'Unexpected error',
+      ok: false,
+    };
+  }
 }

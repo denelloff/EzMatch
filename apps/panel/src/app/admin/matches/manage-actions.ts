@@ -7,6 +7,11 @@ import { z } from 'zod';
 import { assertRole, audit, ForbiddenError } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { hubFetch, HubError } from '@/lib/hub';
+import {
+  DEFAULT_FREEZETIME,
+  FREEZETIME_MAX,
+  FREEZETIME_MIN,
+} from '@/lib/match-defaults';
 import { seal } from '@/lib/secrets';
 
 export interface MatchManageState {
@@ -173,6 +178,7 @@ export async function duplicateMatchAction(
         overtimeEnabled: source.overtimeEnabled,
         overtimeRounds: source.overtimeRounds,
         overtimeStartMoney: source.overtimeStartMoney,
+        freezetime: source.freezetime,
         knifeRound: source.knifeRound,
         backupPrefix: `ezmatch_${randomBytes(4).toString('hex')}`,
         joinPasswordEnc: source.joinPasswordEnc,
@@ -210,6 +216,11 @@ const editSchema = z.object({
   overtimeEnabled: z.boolean(),
   overtimeRounds: z.coerce.number().int().refine((n) => n === 6 || n === 10),
   overtimeStartMoney: z.coerce.number().int().min(0).max(16_000),
+  freezetime: z.coerce
+    .number()
+    .int()
+    .min(FREEZETIME_MIN)
+    .max(FREEZETIME_MAX),
   knifeRound: z.boolean(),
   joinPassword: z.string().max(64).optional(),
   clearJoinPassword: z.boolean(),
@@ -231,6 +242,7 @@ export async function updateMatchAction(
       overtimeEnabled: formData.get('overtimeEnabled') === 'on',
       overtimeRounds: formData.get('overtimeRounds') || 6,
       overtimeStartMoney: formData.get('overtimeStartMoney') || 10_000,
+      freezetime: formData.get('freezetime') || DEFAULT_FREEZETIME,
       knifeRound: formData.get('knifeRound') === 'on',
       joinPassword: String(formData.get('joinPassword') ?? '').trim() || undefined,
       clearJoinPassword: formData.get('clearJoinPassword') === 'on',
@@ -263,6 +275,7 @@ export async function updateMatchAction(
         overtimeEnabled: input.overtimeEnabled,
         overtimeRounds: input.overtimeRounds,
         overtimeStartMoney: input.overtimeStartMoney,
+        freezetime: input.freezetime,
         knifeRound: input.knifeRound,
         ...(input.clearJoinPassword
           ? { joinPasswordEnc: '' }

@@ -40,6 +40,10 @@ const OT_STARTMONEY_MAX = 16_000;
 const OT_STARTMONEY_STORAGE_KEY = 'ezmatch.match.otStartMoney.saved';
 const OT_STARTMONEY_LAST_KEY = 'ezmatch.match.otStartMoney.last';
 
+const FREEZETIME_PRESETS = [5, 10, 15, 20] as const;
+const FREEZETIME_MIN = 0;
+const FREEZETIME_MAX = 60;
+
 /** MR label → total mp_maxrounds (two halves). */
 const MR_OPTIONS = [
   { mr: 8, maxRounds: 16, label: 'MR8' },
@@ -123,6 +127,7 @@ export function MatchCreateForm({
   maps,
   defaultInstanceId,
   defaultMap,
+  defaultFreezetime = 15,
   cancelHref,
   labels,
 }: {
@@ -131,6 +136,8 @@ export function MatchCreateForm({
   maps: MapOption[];
   defaultInstanceId?: string;
   defaultMap?: string;
+  /** Prefill from panel settings (Valve competitive = 15). */
+  defaultFreezetime?: number;
   cancelHref: string;
   labels: {
     teamCt: string;
@@ -143,6 +150,8 @@ export function MatchCreateForm({
     map: string;
     mr: string;
     mrHint: string;
+    freezetime: string;
+    freezetimeHint: string;
     knife: string;
     knifeHint: string;
     overtime: string;
@@ -177,6 +186,7 @@ export function MatchCreateForm({
       'de_mirage',
   );
   const [mr, setMr] = useState(12);
+  const [freezetime, setFreezetime] = useState(defaultFreezetime);
   const [knifeRound, setKnifeRound] = useState(true);
   const [overtimeEnabled, setOvertimeEnabled] = useState(true);
   const [otMr, setOtMr] = useState(3);
@@ -270,6 +280,7 @@ export function MatchCreateForm({
       <input type="hidden" name="maxRounds" value={maxRounds} />
       <input type="hidden" name="overtimeRounds" value={overtimeRounds} />
       <input type="hidden" name="overtimeStartMoney" value={otStartMoney} />
+      <input type="hidden" name="freezetime" value={freezetime} />
       {knifeRound ? <input type="hidden" name="knifeRound" value="on" /> : null}
       {overtimeEnabled ? (
         <input type="hidden" name="overtimeEnabled" value="on" />
@@ -364,6 +375,42 @@ export function MatchCreateForm({
                   {option.label}
                 </button>
               ))}
+            </div>
+          </Field>
+
+          <Field label={labels.freezetime} hint={labels.freezetimeHint}>
+            <div className="flex flex-wrap items-center gap-2">
+              {FREEZETIME_PRESETS.map((seconds) => (
+                <button
+                  key={seconds}
+                  type="button"
+                  onClick={() => setFreezetime(seconds)}
+                  className={
+                    freezetime === seconds ? buttonClass : secondaryButtonClass
+                  }
+                >
+                  {seconds}s
+                </button>
+              ))}
+              <input
+                type="number"
+                min={FREEZETIME_MIN}
+                max={FREEZETIME_MAX}
+                step={1}
+                value={freezetime}
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  if (
+                    Number.isInteger(value) &&
+                    value >= FREEZETIME_MIN &&
+                    value <= FREEZETIME_MAX
+                  ) {
+                    setFreezetime(value);
+                  }
+                }}
+                className={`${inputClass} max-w-[6rem]`}
+                aria-label={labels.freezetime}
+              />
             </div>
           </Field>
 

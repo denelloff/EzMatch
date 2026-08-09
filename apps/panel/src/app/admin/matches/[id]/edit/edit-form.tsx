@@ -45,6 +45,7 @@ export function MatchEditForm({
     overtimeEnabled: boolean;
     overtimeRounds: number;
     overtimeStartMoney: number;
+    freezetime: number;
     knifeRound: boolean;
     hasJoinPassword: boolean;
   };
@@ -55,6 +56,8 @@ export function MatchEditForm({
     team1: string;
     team2: string;
     mr: string;
+    freezetime: string;
+    freezetimeHint: string;
     knife: string;
     overtime: string;
     overtimeMr: string;
@@ -155,6 +158,16 @@ export function MatchEditForm({
               min={0}
               max={16000}
               defaultValue={match.overtimeStartMoney}
+              className={inputClass}
+            />
+          </Field>
+          <Field label={labels.freezetime} hint={labels.freezetimeHint}>
+            <input
+              name="freezetime"
+              type="number"
+              min={0}
+              max={60}
+              defaultValue={match.freezetime}
               className={inputClass}
             />
           </Field>

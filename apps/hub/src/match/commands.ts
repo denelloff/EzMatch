@@ -19,6 +19,8 @@ export interface MatchSettings {
   overtimeEnabled: boolean;
   overtimeRounds: number;
   overtimeStartMoney: number;
+  /** mp_freezetime seconds for LIVE (Valve competitive default 15). */
+  freezetime: number;
   backupPrefix: string;
   /** Applied as sv_password (empty string clears the join password). */
   joinPassword: string;
@@ -111,6 +113,9 @@ export function warmupCommands(settings: MatchSettings): ConsoleCommand[] {
     cmd('mp_limitteams 0'),
     cmd('mp_warmup_pausetimer 1'),
     cmd('mp_warmuptime 9999'),
+    // Minutes — effectively infinite so warmup never ends on round timer.
+    cmd('mp_roundtime 60'),
+    cmd('mp_roundtime_defuse 60'),
     cmd('mp_warmup_start'),
     cmd('mp_backup_round_auto 1'),
     cmd(`mp_backup_round_file ${quoted(settings.backupPrefix)}`),
@@ -150,6 +155,8 @@ export function knifeCommands(settings: MatchSettings): ConsoleCommand[] {
     cmd('mp_halftime 1'),
     cmd(matchSay('Knife round — winner picks side with !stay or !switch'), 500),
     cmd('mp_warmup_end', 1000),
+    // Re-assert after warmup_end — some map loads reset give_player_c4.
+    cmd('mp_give_player_c4 0'),
     cmd('mp_restartgame 1'),
   ];
 }
@@ -189,6 +196,9 @@ export function postKnifeWarmupCommands(settings: MatchSettings): ConsoleCommand
     cmd('mp_buy_anywhere 1'),
     cmd('mp_death_drop_gun 1'),
     cmd('mp_death_drop_grenade 1'),
+    // Minutes — effectively infinite so post-knife warmup never ends on timer.
+    cmd('mp_roundtime 60'),
+    cmd('mp_roundtime_defuse 60'),
     cmd(`mp_maxrounds ${settings.maxRounds}`),
     cmd('mp_halftime 1'),
     cmd('mp_warmup_pausetimer 1'),
@@ -202,7 +212,11 @@ export function postKnifeWarmupCommands(settings: MatchSettings): ConsoleCommand
   ];
 }
 
-/** Official competitive live config after both teams ready. */
+/**
+ * Official Valve competitive live config after both teams ready.
+ * Undoes warmup-only overrides (infinite roundtime / buytime / buy_anywhere /
+ * free armor / startmoney) and restores stock competitive defaults.
+ */
 export function liveCommands(settings: MatchSettings): ConsoleCommand[] {
   return [
     cmd('mp_give_player_c4 1'),
@@ -217,12 +231,18 @@ export function liveCommands(settings: MatchSettings): ConsoleCommand[] {
     cmd('mp_maxmoney 16000'),
     cmd('mp_buytime 20'),
     cmd('mp_buy_anywhere 0'),
+    cmd(`mp_freezetime ${settings.freezetime}`),
+    cmd('mp_c4timer 40'),
+    cmd('mp_timelimit 0'),
     cmd('mp_death_drop_gun 1'),
     cmd('mp_death_drop_grenade 1'),
     cmd('mp_roundtime 1.92'),
     cmd('mp_roundtime_defuse 1.92'),
     cmd(`mp_maxrounds ${settings.maxRounds}`),
     cmd('mp_halftime 1'),
+    cmd('mp_match_can_clinch 1'),
+    cmd('mp_autoteambalance 0'),
+    cmd('mp_limitteams 0'),
     cmd(`mp_overtime_enable ${settings.overtimeEnabled ? 1 : 0}`),
     cmd(`mp_overtime_maxrounds ${settings.overtimeRounds}`),
     cmd(`mp_overtime_startmoney ${settings.overtimeStartMoney}`),
