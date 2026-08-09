@@ -26,5 +26,12 @@ Thumbs.db
 # Cursor IDE / local rules (not for GitHub)
 .cursor/
 
+# Local-only control plane (kept on disk, not published to GitHub)
+apps/hub/
+apps/panel/
+packages/db/
+docs/
+docker-compose.yml
+
 # Agent runtime state (contains the agent token in plaintext)
 apps/agent/.state/
