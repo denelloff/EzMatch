@@ -800,6 +800,10 @@ function buildEnv(config: Cs2Config, agent: AgentConfig): string[] {
     CS2_PORT: String(INTERNAL_GAME_PORT),
     CS2_RCON_PORT: String(INTERNAL_GAME_PORT),
     CS2_TV_PORT: String(INTERNAL_TV_PORT),
+    // joedwards32/cs2 CSTV vars (rewrites tv_delay in gamemode_*.cfg).
+    TV_ENABLE: '1',
+    TV_PORT: String(INTERNAL_TV_PORT),
+    TV_DELAY: String(config.tvDelay),
     CS2_RCONPW: config.rconPassword,
     CS2_PW: config.joinPassword,
     CS2_MAXPLAYERS: String(config.maxPlayers),

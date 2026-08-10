@@ -26,6 +26,8 @@ export const zCs2Config = z.object({
   vacDisabled: z.boolean().default(false),
   /** When true, CS2_BOT_QUOTA=0 and bot_kick runs after start/reconfigure. */
   botsDisabled: z.boolean().default(true),
+  /** GOTV/CSTV broadcast delay in seconds (joedwards32 `TV_DELAY` / `tv_delay`). */
+  tvDelay: z.number().int().min(0).max(300).default(120),
   /** Appended verbatim to the cs2 command line. Panel-side validated. */
   extraArgs: z.string().default(''),
 });
