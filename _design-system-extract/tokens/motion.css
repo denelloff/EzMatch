@@ -1,0 +1,13 @@
+:root{
+  --dur-instant:100ms;/* @kind other */--dur-fast:160ms;/* @kind other */--dur-base:200ms;/* @kind other */--dur-slow:320ms;/* @kind other */
+  --ease-out:cubic-bezier(.22,.8,.36,1);/* @kind other */
+  --ease-in-out:cubic-bezier(.4,0,.2,1);/* @kind other */
+  --ease-standard:ease-out;/* @kind other */
+  --transition-color:color var(--dur-fast) var(--ease-standard),background-color var(--dur-fast) var(--ease-standard),border-color var(--dur-fast) var(--ease-standard);
+  --transition-chrome:all var(--dur-base) var(--ease-out);
+}
+@keyframes ezmatch-fade-up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes ezmatch-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.ezmatch-enter{animation:ezmatch-fade-up var(--dur-slow) var(--ease-out) both}
+.ezmatch-live-dot{animation:ezmatch-pulse 1.6s var(--ease-in-out) infinite}
+@media (prefers-reduced-motion:reduce){.ezmatch-enter,.ezmatch-live-dot{animation:none}}

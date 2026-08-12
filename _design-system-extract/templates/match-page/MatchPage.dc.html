@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Match page" description="eZ-Match live match view: top bar, match header, tabs, scoreboard." -->
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="min-height:100vh;background:var(--bg-app);background-image:var(--wash-app);background-attachment:fixed;font-family:var(--font-sans);color:var(--text-strong)">
+<x-import component-from-global-scope="EZMatchDesignSystem_ab9a05.TopNav" activeHref="/" user="denelloff" role="OWNER" dc-props="{{ navProps }}" hint-size="100%,56px"></x-import>
+<main class="ezmatch-enter" style="margin:0 auto;max-width:var(--reading-max);padding:var(--space-20) var(--space-8);display:flex;flex-direction:column;gap:var(--space-8)">
+<div>
+<a href="#" style="font:var(--type-small);color:var(--text-faint)">← Matches in progress</a>
+<h1 style="margin:var(--space-4) 0 0;font:var(--type-h1);color:var(--text-strong)"><span style="font-family:var(--font-mono);font-size:var(--text-sm);color:var(--text-faint)">#a41f</span> NAVI vs FaZe</h1>
+<p style="margin:var(--space-3) 0 0;font:var(--type-body);color:var(--text-faint)">de_mirage · fra-01 · started 34 minutes ago</p>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:var(--space-3);border-bottom:1px solid var(--border-1);padding-bottom:var(--space-4)">
+<span style="border-bottom:2px solid var(--brand-500);background:var(--surface-2);border-radius:var(--radius-sm) var(--radius-sm) 0 0;padding:var(--space-4) var(--space-6);font-size:var(--text-sm);color:var(--text-strong)">Scoreboard</span>
+<span style="padding:var(--space-4) var(--space-6);font-size:var(--text-sm);color:var(--text-faint)">Match statistics</span>
+<span style="padding:var(--space-4) var(--space-6);font-size:var(--text-sm);color:var(--text-faint)">Player statistics</span>
+<span style="padding:var(--space-4) var(--space-6);font-size:var(--text-sm);color:var(--text-faint)">Weapon statistics</span>
+<span style="padding:var(--space-4) var(--space-6);font-size:var(--text-sm);color:var(--text-faint)">Demos</span>
+</div>
+<x-import component-from-global-scope="EZMatchDesignSystem_ab9a05.Scoreboard" map="de_mirage" state="LIVE" team1Side="CT" dc-props="{{ boardProps }}" hint-size="100%,420px"></x-import>
+</main>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      navProps: {
+        items: [
+          { href: '/', label: 'Matches in progress', count: 2 },
+          { href: '/matches', label: 'Archived matches' },
+          { href: '/stats', label: 'Statistics' },
+        ],
+      },
+      boardProps: {
+        maxRounds: 24,
+        roundsPlayed: 21,
+        team1: { name: 'NAVI', score: 12, players: [
+          { name: 'b1t', kills: 19, assists: 4, deaths: 14, damage: 1740 },
+          { name: 'w0nderful', kills: 17, assists: 3, deaths: 15, damage: 1602 },
+          { name: 'Aleksib', kills: 12, assists: 9, deaths: 16, damage: 1288 },
+          { name: 'jL', kills: 15, assists: 5, deaths: 15, damage: 1451 },
+          { name: 'iM', kills: 11, assists: 6, deaths: 17, damage: 1170, connected: false },
+        ] },
+        team2: { name: 'FaZe', score: 9, players: [
+          { name: 'ropz', kills: 21, assists: 2, deaths: 13, damage: 1893 },
+          { name: 'broky', kills: 16, assists: 4, deaths: 14, damage: 1522 },
+          { name: 'rain', kills: 13, assists: 7, deaths: 16, damage: 1330 },
+          { name: 'frozen', kills: 14, assists: 5, deaths: 15, damage: 1408 },
+          { name: 'karrigan', kills: 9, assists: 8, deaths: 18, damage: 1044 },
+        ] },
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

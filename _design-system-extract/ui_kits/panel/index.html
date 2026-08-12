@@ -1,0 +1,67 @@
+<!-- @dsCard group="Panel" viewport="1280x820" name="eZ-Match panel" subtitle="Click-through: login → matches → scoreboard → admin" -->
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>eZ-Match panel</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>html,body{height:100%}body{margin:0}#root{min-height:100%}</style>
+</head><body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script src="./data.js"></script>
+<script type="text/babel" src="./AppShell.jsx"></script>
+<script type="text/babel" src="./AdminShell.jsx"></script>
+<script type="text/babel" src="./LoginScreen.jsx"></script>
+<script type="text/babel" src="./MatchesScreen.jsx"></script>
+<script type="text/babel" src="./MatchScreen.jsx"></script>
+<script type="text/babel" src="./AdminHomeScreen.jsx"></script>
+<script type="text/babel" src="./CreateMatchScreen.jsx"></script>
+<script type="text/babel" src="./StatsScreen.jsx"></script>
+<script type="text/babel" src="./ServersScreen.jsx"></script>
+<script type="text/babel" src="./TeamsScreen.jsx"></script>
+<script type="text/babel" src="./UsersScreen.jsx"></script>
+<script type="text/babel" src="./SettingsScreen.jsx"></script>
+<script type="text/babel" src="./ControlRoomScreen.jsx"></script>
+<script type="text/babel" src="./SeasonsScreen.jsx"></script>
+<script type="text/babel">
+function App() {
+  const [route, setRoute] = React.useState('login');
+  const [match, setMatch] = React.useState(null);
+  const rows = window.EZ_DATA.matches;
+  const go = (r) => { setRoute(r); };
+  const open = (row) => { setMatch(row); setRoute('match'); };
+
+  if (route === 'login') return <LoginScreen onSignIn={() => go('home')} />;
+
+  if (route.indexOf('admin') === 0) {
+    const titles = {
+      admin: 'Admin panel', 'admin-new': 'Create a match', 'admin-stats': 'Statistics',
+      'admin-live': 'Matches in progress', 'admin-servers': 'Game servers', 'admin-server-new': 'Add agent',
+      'admin-teams': 'Team management', 'admin-team-new': 'Create team', 'admin-users': 'Users',
+      'admin-settings': 'Settings', 'admin-seasons': 'Seasons overview', 'admin-room': 'Match control room',
+      'admin-mine': 'My matches', 'admin-archive': 'Archived matches',
+    };
+    let body;
+    if (route === 'admin-new' || route === 'admin-team-new') body = route === 'admin-team-new' ? <TeamsScreen go={go} /> : <CreateMatchScreen />;
+    else if (route === 'admin-stats') body = <StatsScreen />;
+    else if (route === 'admin-servers' || route === 'admin-server-new') body = <ServersScreen go={go} />;
+    else if (route === 'admin-teams') body = <TeamsScreen go={go} />;
+    else if (route === 'admin-users') body = <UsersScreen go={go} />;
+    else if (route === 'admin-settings') body = <SettingsScreen />;
+    else if (route === 'admin-seasons') body = <SeasonsScreen />;
+    else if (route === 'admin-room') body = <ControlRoomScreen match={match || rows[0]} onBack={() => go('admin')} />;
+    else if (route === 'admin-archive') body = <MatchesScreen archive rows={rows} onOpen={(r) => { setMatch(r); go('admin-room'); }} />;
+    else body = <AdminHomeScreen rows={rows} onOpen={(r) => { setMatch(r); go('admin-room'); }} />;
+    return <AdminShell route={route} go={go} title={titles[route] || 'Admin panel'}>{body}</AdminShell>;
+  }
+
+  let body;
+  if (route === 'match' && match) body = <MatchScreen match={match} onBack={() => go('home')} />;
+  else if (route === 'archive') body = <MatchesScreen archive rows={rows} onOpen={open} />;
+  else if (route === 'stats') body = <StatsScreen />;
+  else body = <MatchesScreen rows={rows.filter(r => r.state !== 'FINISHED')} onOpen={open} />;
+  return <AppShell route={route === 'match' ? 'home' : route} go={go}>{body}</AppShell>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body></html>

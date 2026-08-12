@@ -1,0 +1,28 @@
+<!-- @dsCard group="Components" viewport="700x330" name="Match" subtitle="Match table, stat tiles, task progress" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css"><style>body{margin:0;padding:20px;background:var(--bg-app)}</style></head><body>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<div id="root"></div>
+<script type="text/babel">
+const { MatchTable, StatTile, Card, TaskProgress } = window.EZMatchDesignSystem_ab9a05;
+const rows = [
+  {id:'1',shortId:'a41f',team1Name:'NAVI',team2Name:'FaZe',team1Score:12,team2Score:9,map:'de_mirage',serverName:'fra-01',instanceName:'main',state:'LIVE'},
+  {id:'2',shortId:'b902',team1Name:'Vitality',team2Name:'Spirit',team1Score:5,team2Score:5,map:'de_nuke',serverName:'fra-02',instanceName:'scrim',state:'KNIFE'},
+  {id:'3',shortId:'c113',team1Name:'G2',team2Name:'MOUZ',team1Score:16,team2Score:14,map:'de_ancient',serverName:'ams-01',instanceName:'main',state:'FINISHED'},
+];
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <div style={{display:'flex',flexDirection:'column',gap:14}}>
+    <Card><dl style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',margin:0}}>
+      <StatTile label="Matches" value={128} />
+      <StatTile label="Finished" value={119} />
+      <StatTile label="Rounds played" value={3104} />
+      <StatTile label="Kills recorded" value={24871} tone="brand" />
+    </dl></Card>
+    <MatchTable rows={rows} />
+    <Card><div style={{padding:16}}><TaskProgress label="Deploying ez-agent to fra-01" percent={64} eta="~40s left" /></div></Card>
+  </div>
+);
+</script>
+</body></html>

@@ -131,7 +131,12 @@ public class EzCSayPlugin : BasePlugin
             if (ch >= '\u0001' && ch <= '\u0010') return body;
         }
 
-        if (body.IndexOf("Knife", StringComparison.OrdinalIgnoreCase) >= 0)
+        if (body.IndexOf("Knife", StringComparison.OrdinalIgnoreCase) >= 0
+            || body.Equals("KNIFE", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{ColorChar(9)}{body}{ColorChar(1)}";
+        }
+        if (body.IndexOf("OVERTIME", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             return $"{ColorChar(9)}{body}{ColorChar(1)}";
         }
