@@ -79,7 +79,6 @@ export async function executeCommand(
         await installPlugins(command.instanceId, command.plugins, context);
       }
 
-      await applyLogSink(command.instanceId, 3, false, context);
       await enforceNoBotsIfConfigured(command.instanceId, context);
       return result;
     }
@@ -95,7 +94,6 @@ export async function executeCommand(
         });
       }
       await context.instances.start(command.instanceId);
-      await applyLogSink(command.instanceId, 3, false, context);
       await enforceNoBotsIfConfigured(command.instanceId, context);
       return context.instances.snapshot(context.instances.get(command.instanceId));
     }
@@ -115,7 +113,6 @@ export async function executeCommand(
         });
       }
       await context.instances.restart(command.instanceId);
-      await applyLogSink(command.instanceId, 3, false, context);
       await enforceNoBotsIfConfigured(command.instanceId, context);
       return context.instances.snapshot(context.instances.get(command.instanceId));
     }
@@ -147,7 +144,6 @@ export async function executeCommand(
         command.validate,
         context.progress,
       );
-      await applyLogSink(command.instanceId, 3, false, context);
       return result;
     }
 
@@ -258,6 +254,9 @@ export async function executeCommand(
         command.logItems,
         context,
       );
+
+    case 'logsink.clear':
+      return clearLogSink(command.instanceId, context);
   }
 }
 
@@ -508,4 +507,17 @@ async function applyLogSink(
 
   log.info('log sink applied', { instanceId });
   return { url };
+}
+
+async function clearLogSink(
+  instanceId: string,
+  context: CommandContext,
+): Promise<{ cleared: true }> {
+  const instance = context.instances.get(instanceId);
+  await instance.console.sendAndCapture(
+    [{ command: 'logaddress_delall_http', delayMs: 0 }],
+    0,
+  );
+  log.info('log sink cleared', { instanceId });
+  return { cleared: true };
 }

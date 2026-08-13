@@ -137,6 +137,12 @@ export const zCommand = z.discriminatedUnion('type', [
     logDetail: z.number().int().min(0).max(3).default(3),
     logItems: z.boolean().default(false),
   }),
+
+  /** Remove HTTP logaddress so CS2 stops posting until the next match Start. */
+  z.object({
+    type: z.literal('logsink.clear'),
+    instanceId: zId,
+  }),
 ]);
 export type Command = z.infer<typeof zCommand>;
 export type CommandType = Command['type'];
