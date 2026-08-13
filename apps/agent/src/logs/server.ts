@@ -101,9 +101,12 @@ export class LogServer {
 
     request.on('end', () => {
       if (request.destroyed) return;
-      // CS2 keeps posting regardless of the response, so acknowledge first and
-      // parse afterwards. A slow parse must not stall the game server.
-      response.writeHead(200).end();
+      // CS2 rejects chunked empty bodies ("Internal HTTP error").
+      response.writeHead(200, {
+        'Content-Length': '0',
+        Connection: 'close',
+        'Content-Type': 'text/plain',
+      }).end();
 
       const body = Buffer.concat(chunks).toString('utf8');
       if (!body.trim()) return;

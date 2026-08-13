@@ -78,6 +78,9 @@ importers:
       '@ppanel/protocol':
         specifier: workspace:^
         version: link:../../packages/protocol
+      cs2-log-parser:
+        specifier: ^1.0.3
+        version: 1.0.3
       fastify:
         specifier: ^5.11.2
         version: 5.11.3
