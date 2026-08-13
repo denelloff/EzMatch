@@ -1,0 +1,48 @@
+:root{
+  /* ── Ink ramp (surfaces) ── */
+  --ink-950:#0b0c0e;--ink-900:#121418;--ink-850:#171a1f;--ink-800:#1e2229;
+  --ink-700:#282d36;--ink-600:#39404b;--ink-500:#5b6472;--ink-400:#7b8493;
+  --ink-300:#9ba4b2;--ink-200:#c6ccd6;--ink-100:#e9edf3;--ink-0:#ffffff;
+
+  /* ── Brand: Ignite orange ── */
+  --brand-300:#ffb489;--brand-400:#ff8a4c;--brand-500:#ff6a1f;--brand-600:#e2540f;--brand-700:#b53f07;
+  --brand-glow:rgba(255,106,31,.22);--brand-wash:rgba(255,106,31,.10);--brand-hair:rgba(255,106,31,.35);
+
+  /* ── Semantic status ── */
+  --ok-500:#3ddc97;--warn-500:#f2b53c;--danger-500:#ff5a5f;--info-500:#4aa8ff;
+
+  /* ── Counter-Strike side colors (never re-map: they mirror the game) ── */
+  --side-ct:#4aa8ff;--side-ct-wash:rgba(74,168,255,.15);
+  --side-t:#f0a92c;--side-t-wash:rgba(240,169,44,.15);
+
+  /* ── Semantic aliases ── */
+  --bg-app:var(--ink-950);
+  --surface-1:var(--ink-900);
+  --surface-2:var(--ink-850);
+  --surface-3:var(--ink-800);
+  --surface-card:var(--ink-900);
+  --surface-raised:var(--ink-800);
+  --surface-inset:var(--ink-950);
+
+  --border-1:var(--ink-700);
+  --border-2:var(--ink-600);
+  --border-strong:var(--ink-500);
+  --border-accent:var(--brand-hair);
+
+  --text-strong:var(--ink-100);
+  --text-body:var(--ink-200);
+  --text-muted:var(--ink-300);
+  --text-faint:var(--ink-400);
+  --text-on-brand:var(--ink-950);
+  --text-link:var(--brand-500);
+  --text-link-hover:var(--brand-400);
+
+  --accent:var(--brand-500);
+  --accent-hover:var(--brand-600);
+  --accent-quiet:var(--brand-wash);
+
+  /* ── Ambient page wash (fixed, behind everything) ── */
+  --wash-app:
+    radial-gradient(ellipse 90% 55% at 12% -12%, rgba(255,106,31,.10), transparent 52%),
+    radial-gradient(ellipse 65% 45% at 100% 0%, rgba(74,168,255,.05), transparent 48%); /* @kind other */
+}

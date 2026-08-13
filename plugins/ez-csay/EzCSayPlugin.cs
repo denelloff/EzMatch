@@ -16,7 +16,7 @@ public class EzCSayPlugin : BasePlugin
 {
     public override string ModuleName => "eZ-Match CSay";
     public override string ModuleAuthor => "denello";
-    public override string ModuleVersion => "0.1.1";
+    public override string ModuleVersion => "0.1.2";
     public override string ModuleDescription =>
         "Colored [EZ-MATCH] chat announcements from the server console.";
 
@@ -125,7 +125,18 @@ public class EzCSayPlugin : BasePlugin
 
     private static string ColorizeBody(string body)
     {
-        if (body.IndexOf("Knife", StringComparison.OrdinalIgnoreCase) >= 0)
+        // Already tagged via {blue}/… — do not override team colors on ready lines.
+        foreach (var ch in body)
+        {
+            if (ch >= '\u0001' && ch <= '\u0010') return body;
+        }
+
+        if (body.IndexOf("Knife", StringComparison.OrdinalIgnoreCase) >= 0
+            || body.Equals("KNIFE", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{ColorChar(9)}{body}{ColorChar(1)}";
+        }
+        if (body.IndexOf("OVERTIME", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             return $"{ColorChar(9)}{body}{ColorChar(1)}";
         }

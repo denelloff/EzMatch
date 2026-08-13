@@ -1,0 +1,26 @@
+:root{
+  --font-display:"Chakra Petch","IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  --font-sans:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"JetBrains Mono",Consolas,monospace;
+
+  /* Sizes — the panel is a dense operator tool: 14px is the workhorse. */
+  --text-3xs:10px;--text-2xs:11px;--text-xs:12px;--text-sm:13px;--text-base:14px;
+  --text-md:16px;--text-lg:18px;--text-xl:22px;--text-2xl:28px;--text-3xl:36px;--text-4xl:48px;
+
+  --leading-tight:1.15;--leading-snug:1.35;--leading-normal:1.55;--leading-relaxed:1.7;
+
+  --weight-regular:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;
+
+  --tracking-tight:-0.01em;--tracking-normal:0;--tracking-wide:0.06em;
+  --tracking-eyebrow:0.16em;--tracking-vs:0.25em;
+
+  /* Roles */
+  --type-display:var(--weight-bold) var(--text-3xl)/var(--leading-tight) var(--font-display);
+  --type-h1:var(--weight-semibold) var(--text-lg)/var(--leading-snug) var(--font-display);
+  --type-h2:var(--weight-semibold) var(--text-base)/var(--leading-snug) var(--font-sans);
+  --type-body:var(--weight-regular) var(--text-base)/var(--leading-normal) var(--font-sans);
+  --type-small:var(--weight-regular) var(--text-xs)/var(--leading-normal) var(--font-sans);
+  --type-eyebrow:var(--weight-semibold) var(--text-3xs)/1.2 var(--font-display);
+  --type-score:var(--weight-bold) var(--text-3xl)/1 var(--font-display);
+  --type-mono:var(--weight-regular) var(--text-xs)/var(--leading-normal) var(--font-mono);
+}

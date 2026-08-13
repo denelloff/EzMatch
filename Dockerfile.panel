@@ -1,0 +1,58 @@
+# Built from the repository root:
+#   docker build -f Dockerfile.panel -t ez-panel:0.1.0 .
+#
+# Runtime needs (do not bake secrets into the image):
+#   DATABASE_URL, PPANEL_SECRET_KEY, HUB_INTERNAL_TOKEN, HUB_INTERNAL_URL
+
+FROM node:24-alpine AS build
+
+RUN corepack enable \
+ && apk add --no-cache libc6-compat openssl
+
+WORKDIR /repo
+
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+COPY packages/protocol/package.json packages/protocol/
+COPY packages/db/package.json packages/db/
+COPY apps/panel/package.json apps/panel/
+
+RUN pnpm install --frozen-lockfile \
+  --filter @ppanel/panel... \
+  --filter @ppanel/db... \
+  --filter @ppanel/protocol...
+
+COPY packages/protocol packages/protocol
+COPY packages/db packages/db
+COPY apps/panel apps/panel
+
+# prisma.config requires DATABASE_URL at generate-time; no live DB needed.
+ENV DATABASE_URL="mysql://build:build@127.0.0.1:3306/build" \
+    NEXT_TELEMETRY_DISABLED=1
+
+RUN pnpm --filter @ppanel/protocol build \
+ && pnpm --filter @ppanel/db build \
+ && pnpm --filter @ppanel/panel build
+
+FROM node:24-alpine AS runtime
+
+RUN apk add --no-cache libc6-compat openssl tini \
+ && addgroup -S ppanel && adduser -S -G ppanel ppanel
+
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+
+# Next standalone (pnpm monorepo layout)
+COPY --from=build --chown=ppanel:ppanel /repo/apps/panel/.next/standalone ./
+COPY --from=build --chown=ppanel:ppanel /repo/apps/panel/.next/static ./apps/panel/.next/static
+COPY --from=build --chown=ppanel:ppanel /repo/apps/panel/public ./apps/panel/public
+
+USER ppanel
+
+EXPOSE 3000
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "apps/panel/server.js"]

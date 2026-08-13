@@ -1,0 +1,5 @@
+/* Webfonts. IBM Plex Sans / IBM Plex Mono are the fonts the eZ-Match codebase
+   already ships (next/font/google). Chakra Petch is the NEW display face for
+   the "Ignite" direction, replacing Manrope. All three are served from Google
+   Fonts — no binaries were present in the source repo. */
+@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Manrope:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");

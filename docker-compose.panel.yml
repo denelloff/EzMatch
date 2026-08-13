@@ -1,0 +1,27 @@
+# Panel only — MariaDB stays on the existing host.
+#
+#   docker compose -f docker-compose.panel.yml --env-file .env.panel up -d
+#
+# Hub must be reachable at HUB_INTERNAL_URL (same Docker network, host, or LAN).
+
+services:
+  panel:
+    image: ez-panel:0.1.0
+    container_name: ez-panel
+    restart: unless-stopped
+    ports:
+      - "${PANEL_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PPANEL_SECRET_KEY: ${PPANEL_SECRET_KEY}
+      HUB_INTERNAL_TOKEN: ${HUB_INTERNAL_TOKEN}
+      HUB_INTERNAL_URL: ${HUB_INTERNAL_URL:-http://host.docker.internal:4000}
+      HUB_PUBLIC_URL: ${HUB_PUBLIC_URL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Persist uploaded logos / assets across container recreates
+      - panel-uploads:/app/apps/panel/public/uploads
+
+volumes:
+  panel-uploads:
