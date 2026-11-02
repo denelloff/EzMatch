@@ -1,6 +1,22 @@
+import { statSync } from 'node:fs';
 import type Docker from 'dockerode';
 import { docker, pullImage } from './docker/client.js';
 import { log } from './logger.js';
+
+/** Host docker.sock GID so the container can talk to the daemon (mode 660). */
+function dockerSockGroupAdd(
+  existing: string[] | null | undefined,
+): string[] | undefined {
+  let sockGid: string | null = null;
+  try {
+    sockGid = String(statSync('/var/run/docker.sock').gid);
+  } catch {
+    sockGid = null;
+  }
+  const groups = new Set<string>(existing ?? []);
+  if (sockGid && sockGid !== '0') groups.add(sockGid);
+  return groups.size > 0 ? [...groups] : undefined;
+}
 
 /** Only digest/tag refs — never shell metacharacters. */
 const SAFE_IMAGE = /^[a-zA-Z0-9._\/:-]+$/;
@@ -93,6 +109,7 @@ async function createReplacement(
       Binds: binds,
       NetworkMode: networkMode,
       RestartPolicy: restart,
+      GroupAdd: dockerSockGroupAdd(current.HostConfig?.GroupAdd),
     },
   });
 }
@@ -129,6 +146,7 @@ async function scheduleSwapViaHelper(
     HostConfig: {
       AutoRemove: true,
       Binds: ['/var/run/docker.sock:/var/run/docker.sock'],
+      GroupAdd: dockerSockGroupAdd(undefined),
       NetworkMode: 'none',
       RestartPolicy: { Name: 'no' },
     },
