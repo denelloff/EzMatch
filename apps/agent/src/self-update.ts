@@ -109,6 +109,8 @@ async function createReplacement(
       Binds: binds,
       NetworkMode: networkMode,
       RestartPolicy: restart,
+      // Match bootstrap: avoid userns-remap EACCES on docker.sock.
+      UsernsMode: current.HostConfig?.UsernsMode || 'host',
       GroupAdd: dockerSockGroupAdd(current.HostConfig?.GroupAdd),
     },
   });
@@ -146,6 +148,7 @@ async function scheduleSwapViaHelper(
     HostConfig: {
       AutoRemove: true,
       Binds: ['/var/run/docker.sock:/var/run/docker.sock'],
+      UsernsMode: 'host',
       GroupAdd: dockerSockGroupAdd(undefined),
       NetworkMode: 'none',
       RestartPolicy: { Name: 'no' },
