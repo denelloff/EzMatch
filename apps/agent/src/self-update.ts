@@ -18,6 +18,15 @@ function dockerSockGroupAdd(
   return groups.size > 0 ? [...groups] : undefined;
 }
 
+/** Debian docker-default AppArmor denies AF_UNIX create → EACCES on docker.sock. */
+function mergeSecurityOpt(
+  existing: string[] | null | undefined,
+): string[] {
+  const opts = new Set<string>(existing ?? []);
+  opts.add('apparmor=unconfined');
+  return [...opts];
+}
+
 /** Only digest/tag refs — never shell metacharacters. */
 const SAFE_IMAGE = /^[a-zA-Z0-9._\/:-]+$/;
 const SAFE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
@@ -109,8 +118,9 @@ async function createReplacement(
       Binds: binds,
       NetworkMode: networkMode,
       RestartPolicy: restart,
-      // Match bootstrap: avoid userns-remap EACCES on docker.sock.
+      // Match bootstrap: avoid userns-remap / AppArmor EACCES on docker.sock.
       UsernsMode: current.HostConfig?.UsernsMode || 'host',
+      SecurityOpt: mergeSecurityOpt(current.HostConfig?.SecurityOpt),
       GroupAdd: dockerSockGroupAdd(current.HostConfig?.GroupAdd),
     },
   });
@@ -149,6 +159,7 @@ async function scheduleSwapViaHelper(
       AutoRemove: true,
       Binds: ['/var/run/docker.sock:/var/run/docker.sock'],
       UsernsMode: 'host',
+      SecurityOpt: mergeSecurityOpt(undefined),
       GroupAdd: dockerSockGroupAdd(undefined),
       NetworkMode: 'none',
       RestartPolicy: { Name: 'no' },
