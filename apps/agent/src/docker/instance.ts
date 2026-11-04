@@ -58,7 +58,15 @@ export interface ManagedInstance {
    * but a deliberate Stop leaves it down.
    */
   desiredRunning: boolean;
+  /**
+   * When true (match Start), keep Docker console attached.
+   * Cleared on match end / explicit console.detach.
+   */
+  consolePinned: boolean;
 }
+
+/** After start: stream boot log this long, then detach until match. */
+const BOOT_CONSOLE_MS = 120_000;
 
 export type InstanceChangeListener = (snapshot: InstanceSnapshot) => void;
 export type ConsoleLineListener = (
@@ -82,6 +90,7 @@ export class InstanceManager {
   private readonly autoRestarting = new Set<string>();
   /** Suppress crash auto-restart while stop/restart/update owns the lifecycle. */
   private readonly lifecycleQuiet = new Set<string>();
+  private readonly bootDetachTimers = new Map<string, NodeJS.Timeout>();
   private eventsStop: (() => void) | null = null;
 
   constructor(private readonly config: AgentConfig) {}
@@ -114,14 +123,86 @@ export class InstanceManager {
 
   private wireConsole(instance: ManagedInstance): void {
     instance.console.subscribe((line, ts) => {
-      for (const listener of this.consoleListeners) {
-        try {
-          listener(instance.instanceId, line, ts);
-        } catch (error) {
-          log.warn('console line listener threw', { error });
-        }
-      }
+      this.emitConsoleLine(instance.instanceId, line, ts);
     });
+  }
+
+  private emitConsoleLine(instanceId: string, line: string, ts: string): void {
+    for (const listener of this.consoleListeners) {
+      try {
+        listener(instanceId, line, ts);
+      } catch (error) {
+        log.warn('console line listener threw', { error });
+      }
+    }
+  }
+
+  pinConsole(instanceId: string): void {
+    const instance = this.get(instanceId);
+    instance.consolePinned = true;
+    const timer = this.bootDetachTimers.get(instanceId);
+    if (timer) {
+      clearTimeout(timer);
+      this.bootDetachTimers.delete(instanceId);
+    }
+  }
+
+  unpinConsole(instanceId: string): void {
+    const instance = this.get(instanceId);
+    instance.consolePinned = false;
+  }
+
+  /**
+   * Dump recent container logs into the hub console stream, then keep attach
+   * live for BOOT_CONSOLE_MS before detaching (unless pinned for a match).
+   */
+  private async beginBootConsole(instance: ManagedInstance): Promise<void> {
+    await this.emitRecentLogs(instance);
+    await this.attachConsole(instance);
+    // Pinned sessions (live match / plugin verify) stay attached.
+    if (!instance.consolePinned) this.scheduleBootDetach(instance);
+  }
+
+  private scheduleBootDetach(instance: ManagedInstance): void {
+    const existing = this.bootDetachTimers.get(instance.instanceId);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.bootDetachTimers.delete(instance.instanceId);
+      if (instance.consolePinned) return;
+      instance.console.stop();
+      log.info('boot console detached until match', {
+        instanceId: instance.instanceId,
+      });
+    }, BOOT_CONSOLE_MS);
+    timer.unref?.();
+    this.bootDetachTimers.set(instance.instanceId, timer);
+  }
+
+  private async emitRecentLogs(
+    instance: ManagedInstance,
+    tail = 2000,
+  ): Promise<void> {
+    try {
+      const container = docker.getContainer(instance.containerName);
+      const raw = (await container.logs({
+        stdout: true,
+        stderr: true,
+        tail,
+        timestamps: false,
+      })) as Buffer;
+      const text = raw.toString('utf8');
+      const ts = new Date().toISOString();
+      for (const line of text.split('\n')) {
+        const cleaned = line.replace(/\r$/, '').trimEnd();
+        if (!cleaned.trim()) continue;
+        this.emitConsoleLine(instance.instanceId, cleaned.slice(0, 8192), ts);
+      }
+    } catch (error) {
+      log.warn('could not backfill docker logs', {
+        instanceId: instance.instanceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   list(): ManagedInstance[] {
@@ -177,6 +258,7 @@ export class InstanceManager {
         secrets: secretsFromEnv(details?.Config.Env ?? []),
         autoRestart: true,
         desiredRunning: Boolean(details?.State.Running),
+        consolePinned: false,
       };
       instance.console.setSecrets(instance.secrets);
 
@@ -185,7 +267,7 @@ export class InstanceManager {
       log.info('adopted existing instance', { instanceId, state: instance.state });
 
       if (instance.state === 'running') {
-        void instance.console.start();
+        // Stay detached after agent reconnect; hub re-pins for live matches.
         void this.refreshBuildId(instance);
       }
     }
@@ -250,6 +332,7 @@ export class InstanceManager {
       secrets,
       autoRestart: true,
       desiredRunning: true,
+      consolePinned: false,
     };
     instance.console.setSecrets(secrets);
     this.instances.set(instanceId, instance);
@@ -300,7 +383,7 @@ export class InstanceManager {
     await this.followInstall(instance, report);
 
     await this.refreshBuildId(instance);
-    void instance.console.start();
+    await this.beginBootConsole(instance);
     this.setState(instance, 'running');
 
     return { ports: allocation.ports, buildId: instance.buildId };
@@ -431,8 +514,9 @@ export class InstanceManager {
       if (!isAlreadyInState(error)) throw error;
     }
     instance.startedAt = new Date().toISOString();
+    // Keep consolePinned if a match / plugin verify already pinned it.
     await this.refreshBuildId(instance);
-    await this.attachConsole(instance);
+    await this.beginBootConsole(instance);
     this.setState(instance, 'running');
   }
 
@@ -440,6 +524,7 @@ export class InstanceManager {
     const instance = this.get(instanceId);
     this.lifecycleQuiet.add(instanceId);
     instance.desiredRunning = false;
+    instance.consolePinned = false;
     this.setState(instance, 'stopping');
     instance.console.stop();
     try {
@@ -505,7 +590,8 @@ export class InstanceManager {
     if (event.status === 'start') {
       if (instance.state !== 'running' && instance.state !== 'starting') {
         instance.startedAt = new Date().toISOString();
-        void instance.console.start();
+        instance.consolePinned = false;
+        void this.beginBootConsole(instance);
         this.setState(instance, 'running');
       }
       return;

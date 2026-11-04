@@ -194,12 +194,14 @@ export async function executeCommand(
     }
 
     case 'console.attach': {
+      context.instances.pinConsole(command.instanceId);
       const instance = context.instances.get(command.instanceId);
       await instance.console.start();
       return { attached: instance.console.isAttached };
     }
 
     case 'console.detach': {
+      context.instances.unpinConsole(command.instanceId);
       const instance = context.instances.get(command.instanceId);
       instance.console.stop();
       return { attached: false };
@@ -207,14 +209,20 @@ export async function executeCommand(
 
     case 'console.send': {
       const instance = context.instances.get(command.instanceId);
-      const output = await instance.console.sendAndCapture(
-        command.commands.map((item) => ({
-          command: item.command,
-          delayMs: item.delayMs,
-        })),
-        command.captureMs,
-      );
-      return { output };
+      const pinned = instance.consolePinned;
+      try {
+        const output = await instance.console.sendAndCapture(
+          command.commands.map((item) => ({
+            command: item.command,
+            delayMs: item.delayMs,
+          })),
+          command.captureMs,
+        );
+        return { output };
+      } finally {
+        // Idle servers stay detached; match-pinned sessions keep the stream.
+        if (!pinned) instance.console.stop();
+      }
     }
 
     case 'plugin.install': {
@@ -323,32 +331,39 @@ async function installPlugins(
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  context.progress('installing-plugins', 'Restarting to load the plugins', null);
-  await context.instances.restart(instanceId);
+  // Keep console attached across boot-detach timer for verify.
+  context.instances.pinConsole(instanceId);
+  try {
+    context.progress('installing-plugins', 'Restarting to load the plugins', null);
+    await context.instances.restart(instanceId);
 
-  // CS2 + Metamod need wall-clock time after start before console answers.
-  context.progress('verifying', 'Waiting for server console after restart', null);
-  await waitForConsoleReady(instance, 180_000, context.signal);
+    // CS2 + Metamod need wall-clock time after start before console answers.
+    context.progress('verifying', 'Waiting for server console after restart', null);
+    await waitForConsoleReady(instance, 180_000, context.signal);
 
-  for (const plugin of plugins) {
-    if (!plugin.verifyCommand) continue;
-    throwIfAborted(context.signal);
-    context.progress('verifying', `Checking ${plugin.id}`, null);
+    for (const plugin of plugins) {
+      if (!plugin.verifyCommand) continue;
+      throwIfAborted(context.signal);
+      context.progress('verifying', `Checking ${plugin.id}`, null);
 
-    const result = await verifyPluginWithRetry(
-      plugin,
-      (command, captureMs) =>
-        instance.console.sendAndCapture([{ command, delayMs: 0 }], captureMs),
-      180_000,
-      (msg) => context.progress('verifying', msg, null),
-      context.signal,
-      () => instance.console.isContainerRunning(),
-      () => instance.console.start(),
-    );
-    if (!result.ok) {
-      throw new Error(formatVerifyFailure(plugin, result.output));
+      const result = await verifyPluginWithRetry(
+        plugin,
+        (command, captureMs) =>
+          instance.console.sendAndCapture([{ command, delayMs: 0 }], captureMs),
+        180_000,
+        (msg) => context.progress('verifying', msg, null),
+        context.signal,
+        () => instance.console.isContainerRunning(),
+        () => instance.console.start(),
+      );
+      if (!result.ok) {
+        throw new Error(formatVerifyFailure(plugin, result.output));
+      }
+      log.info('plugin verified', { instanceId, plugin: plugin.id });
     }
-    log.info('plugin verified', { instanceId, plugin: plugin.id });
+  } finally {
+    context.instances.unpinConsole(instanceId);
+    instance.console.stop();
   }
 }
 
