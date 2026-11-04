@@ -21,10 +21,10 @@ const GAME_DIR = 'game/csgo';
 export const METAMOD_BUILD = '2.0.0-git1483';
 export const COUNTERSTRIKESHARP_VERSION = '1.0.379';
 export const FAKE_RCON_VERSION = '1.3.0';
-export const EZ_CSAY_VERSION = '0.1.1';
-/** SHA-256 of plugins/ez-csay/dist/EzCSay.zip */
+export const EZ_CSAY_VERSION = '0.1.2';
+/** SHA-256 of plugins/ez-csay/dist/EzCSay.zip (release ez-csay-v0.1.2) */
 export const EZ_CSAY_ZIP_SHA256 =
-  'd054a24efd149a2e9d9acfd467528a3f55f9aeb79c31d9d9234301314a8b2131';
+  'ba6eb7ecabc35029efc49c1dbe5e2aea4656e89789c99ea9d8fed0a8aff37b08';
 
 export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
   metamod: {
