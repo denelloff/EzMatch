@@ -19,7 +19,7 @@ public class EzCSayPlugin : BasePlugin
 {
     public override string ModuleName => "eZ-Match CSay";
     public override string ModuleAuthor => "denello";
-    public override string ModuleVersion => "0.1.2";
+    public override string ModuleVersion => "0.1.3";
     public override string ModuleDescription =>
         "Colored [EZ-MATCH] chat announcements from the server console.";
 
@@ -28,6 +28,17 @@ public class EzCSayPlugin : BasePlugin
     private const int SayText2Id = 118;
     /// <summary>Protobuf id for <c>CUserMessageSayText</c>.</summary>
     private const int SayTextId = 117;
+    /// <summary>Protobuf id for <c>CUserMessageTextMsg</c> (HUD_PRINTTALK etc.).</summary>
+    private const int TextMsgId = 124;
+
+    /// <summary>
+    /// Engine restore announce sometimes bypasses string matching on SayText fields.
+    /// After <c>mp_backup_restore_load_file</c>, drop non-branded chat briefly.
+    /// Hub sends our branded line *before* the restore command, so it stays visible.
+    /// </summary>
+    private DateTime _suppressNonBrandedUntilUtc = DateTime.MinValue;
+    private static readonly TimeSpan RestoreSuppressWindow = TimeSpan.FromSeconds(4);
+
     private static readonly Dictionary<string, int> ColorMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["{default}"] = 1,
@@ -53,28 +64,57 @@ public class EzCSayPlugin : BasePlugin
     public override void Load(bool hotReload)
     {
         AddCommandListener("say", OnConsoleSay);
+        AddCommandListener("mp_backup_restore_load_file", OnBackupRestoreLoad, HookMode.Pre);
         // Engine backup-restore announce bypasses console `say` — filter it here.
         HookUserMessage(SayText2Id, OnChatUserMessage, HookMode.Pre);
         HookUserMessage(SayTextId, OnChatUserMessage, HookMode.Pre);
+        HookUserMessage(TextMsgId, OnChatUserMessage, HookMode.Pre);
         Logger.LogInformation("{Name} v{Version} loaded", ModuleName, ModuleVersion);
+    }
+
+    private HookResult OnBackupRestoreLoad(CCSPlayerController? player, CommandInfo info)
+    {
+        _suppressNonBrandedUntilUtc = DateTime.UtcNow + RestoreSuppressWindow;
+        Logger.LogInformation(
+            "Suppressing non-branded chat until {Until} (mp_backup_restore_load_file)",
+            _suppressNonBrandedUntilUtc);
+        return HookResult.Continue;
     }
 
     private HookResult OnChatUserMessage(UserMessage message)
     {
         try
         {
-            // SayText2: param1 = author, param2 = body. SayText: often param1 = body.
-            var candidates = new[]
-            {
-                SafeReadString(message, "param2"),
-                SafeReadString(message, "param1"),
-                SafeReadString(message, "param0"),
-            };
+            var suppressing = DateTime.UtcNow < _suppressNonBrandedUntilUtc;
+            var candidates = CollectMessageStrings(message);
 
             foreach (var raw in candidates)
             {
                 if (string.IsNullOrEmpty(raw)) continue;
                 if (IsNativeBackupRestoreAnnounce(raw))
+                {
+                    return HookResult.Stop;
+                }
+            }
+
+            if (suppressing)
+            {
+                // During the restore window, keep only our branded lines.
+                var anyBranded = false;
+                var anyText = false;
+                foreach (var raw in candidates)
+                {
+                    if (string.IsNullOrWhiteSpace(raw)) continue;
+                    anyText = true;
+                    var plain = StripChatCodes(raw);
+                    if (plain.Contains(Brand, StringComparison.OrdinalIgnoreCase))
+                    {
+                        anyBranded = true;
+                        break;
+                    }
+                }
+
+                if (anyText && !anyBranded)
                 {
                     return HookResult.Stop;
                 }
@@ -86,6 +126,21 @@ public class EzCSayPlugin : BasePlugin
         }
 
         return HookResult.Continue;
+    }
+
+    private static IEnumerable<string> CollectMessageStrings(UserMessage message)
+    {
+        // SayText2: param1 = author, param2 = body.
+        // SayText / TextMsg: body may live in param0/param1/message/text.
+        foreach (var field in new[]
+                 {
+                     "param2", "param1", "param0", "param3", "param4",
+                     "message", "text", "messagename",
+                 })
+        {
+            var value = SafeReadString(message, field);
+            if (!string.IsNullOrEmpty(value)) yield return value;
+        }
     }
 
     private static string SafeReadString(UserMessage message, string field)
@@ -111,7 +166,8 @@ public class EzCSayPlugin : BasePlugin
             return false;
         }
 
-        return plain.StartsWith("Restoring match backup", StringComparison.OrdinalIgnoreCase);
+        // StartsWith misses odd prefixes / console wrappers; Contains is safer.
+        return plain.Contains("Restoring match backup", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string StripChatCodes(string value)
