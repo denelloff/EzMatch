@@ -22,6 +22,11 @@ export const zInstallStep = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('download-extract'),
     url: z.string(),
+    /**
+     * Tried in order after `url` fails (throttled CDN, DPI reset, etc.).
+     * Same sha256 must apply to every mirror.
+     */
+    mirrors: z.array(z.string()).default([]),
     archive: zArchiveFormat,
     /** Hex-encoded SHA-256 of the archive. Verified before extraction. */
     sha256: z.string().length(64).nullable(),

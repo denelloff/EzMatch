@@ -46,8 +46,33 @@ async function runStep(
 ): Promise<void> {
   switch (step.kind) {
     case 'download-extract': {
-      report(`Downloading ${step.url}`, percent);
-      const data = await download(step.url, step.sha256, signal);
+      const urls = [step.url, ...(step.mirrors ?? [])].filter(
+        (value, index, all) => value && all.indexOf(value) === index,
+      );
+      let data: Buffer | null = null;
+      let lastError: unknown;
+      for (const [urlIndex, url] of urls.entries()) {
+        throwIfAborted(signal);
+        report(
+          urlIndex === 0
+            ? `Downloading ${url}`
+            : `Mirror ${urlIndex}/${urls.length - 1}: ${url}`,
+          percent,
+        );
+        try {
+          data = await download(url, step.sha256, signal);
+          break;
+        } catch (error) {
+          lastError = error;
+          if (signal?.aborted) throw new CommandCancelledError();
+          log.warn('plugin download source failed, trying next', {
+            url,
+            remaining: urls.length - urlIndex - 1,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      if (!data) throw formatDownloadError(urls[0] ?? step.url, lastError);
       throwIfAborted(signal);
       report(`Unpacking into ${step.dest}`, percent);
       const entries = await unpackArchive(
