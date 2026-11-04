@@ -175,6 +175,10 @@ export class ConsoleSession {
       );
     }
 
+    // Boot detach / idle stop() sets stopped=true; attach() would no-op until
+    // start() clears it. Console commands must be able to re-open the stream.
+    this.stopped = false;
+
     // After restart, attach can lag a few seconds behind State.Running.
     for (let attempt = 0; attempt < 8 && !this.isAttached; attempt++) {
       await this.attach();
