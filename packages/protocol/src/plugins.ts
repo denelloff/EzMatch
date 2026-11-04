@@ -26,7 +26,7 @@ export const zInstallStep = z.discriminatedUnion('kind', [
      * Tried in order after `url` fails (throttled CDN, DPI reset, etc.).
      * Same sha256 must apply to every mirror.
      */
-    mirrors: z.array(z.string()).default([]),
+    mirrors: z.array(z.string()).optional(),
     archive: zArchiveFormat,
     /** Hex-encoded SHA-256 of the archive. Verified before extraction. */
     sha256: z.string().length(64).nullable(),
