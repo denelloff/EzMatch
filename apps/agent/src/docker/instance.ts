@@ -950,6 +950,8 @@ function buildAdditionalArgs(config: Cs2Config): string {
   if (config.vacDisabled) parts.push('-insecure');
   // joedwards32/cs2 forwards CS2_ADDITIONAL_ARGS onto the CS2 cmdline.
   if (config.botsDisabled) parts.push('-nobots');
+  // Required for mp_backup_round_* / panel backup restore list.
+  parts.push('-allow_round_backup_files');
   const extra = config.extraArgs.trim();
   if (extra) parts.push(extra);
   return parts.join(' ');
