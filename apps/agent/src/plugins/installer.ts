@@ -108,16 +108,46 @@ async function runStep(
   }
 }
 
-async function download(
+const DOWNLOAD_ATTEMPTS = 3;
+
+function isTransientDownloadError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'AbortError') return false;
+  const text = `${error.message} ${error.name}`.toLowerCase();
+  if (text.includes('cancelled by operator')) return false;
+  return (
+    text.includes('terminated') ||
+    text.includes('other side closed') ||
+    text.includes('socket') ||
+    text.includes('econnreset') ||
+    text.includes('econnrefused') ||
+    text.includes('etimedout') ||
+    text.includes('network') ||
+    text.includes('fetch failed')
+  );
+}
+
+function formatDownloadError(url: string, error: unknown): Error {
+  if (error instanceof CommandCancelledError) return error;
+  if (error instanceof Error && error.name === 'AbortError') {
+    return new Error(
+      `Download timed out after ${DOWNLOAD_TIMEOUT_MS / 1000}s: ${url}`,
+    );
+  }
+  const raw = error instanceof Error ? error.message : String(error);
+  if (/^terminated$/i.test(raw.trim())) {
+    return new Error(
+      `Download interrupted while reading ${url} (connection closed). Retry the install.`,
+    );
+  }
+  return error instanceof Error ? error : new Error(raw);
+}
+
+async function downloadOnce(
   url: string,
   expectedSha256: string | null,
   signal?: AbortSignal,
 ): Promise<Buffer> {
-  const parsed = new URL(url);
-  if (parsed.protocol !== 'https:') {
-    throw new Error(`Plugin downloads must use https, got ${parsed.protocol}`);
-  }
-
   const controller = new AbortController();
   const onAbort = () => controller.abort();
   signal?.addEventListener('abort', onAbort);
@@ -157,16 +187,48 @@ async function download(
     }
 
     return data;
-  } catch (error) {
-    if (signal?.aborted) throw new CommandCancelledError();
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(`Download timed out after ${DOWNLOAD_TIMEOUT_MS / 1000}s: ${url}`);
-    }
-    throw error;
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener('abort', onAbort);
   }
+}
+
+async function download(
+  url: string,
+  expectedSha256: string | null,
+  signal?: AbortSignal,
+): Promise<Buffer> {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`Plugin downloads must use https, got ${parsed.protocol}`);
+  }
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
+    throwIfAborted(signal);
+    try {
+      return await downloadOnce(url, expectedSha256, signal);
+    } catch (error) {
+      if (signal?.aborted) throw new CommandCancelledError();
+      lastError = error;
+      if (
+        attempt >= DOWNLOAD_ATTEMPTS ||
+        !isTransientDownloadError(error)
+      ) {
+        break;
+      }
+      const delayMs = attempt * 1_500;
+      log.warn('plugin download interrupted, retrying', {
+        url,
+        attempt,
+        delayMs,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw formatDownloadError(url, lastError);
 }
 
 /**
