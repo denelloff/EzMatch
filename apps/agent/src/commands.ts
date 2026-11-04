@@ -217,9 +217,22 @@ export async function executeCommand(
       return { output };
     }
 
-    case 'plugin.install':
-      await installPlugins(command.instanceId, [command.plugin], context);
-      return { installed: command.plugin.id, version: command.plugin.version };
+    case 'plugin.install': {
+      const plugins =
+        command.plugins && command.plugins.length > 0
+          ? command.plugins
+          : command.plugin
+            ? [command.plugin]
+            : [];
+      if (plugins.length === 0) {
+        throw new Error('plugin.install requires plugins[] or plugin');
+      }
+      await installPlugins(command.instanceId, plugins, context);
+      return {
+        installed: plugins.map((plugin) => plugin.id),
+        versions: plugins.map((plugin) => plugin.version),
+      };
+    }
 
     case 'plugin.remove': {
       const instance = context.instances.get(command.instanceId);
@@ -465,6 +478,16 @@ function formatVerifyFailure(plugin: PluginSpec, output: string): string {
     return (
       `${plugin.id} ${plugin.version} could not be verified because the CS2 server was not running. ` +
       `Output: ${trimmed}`
+    );
+  }
+  if (
+    trimmed === '(no output)' &&
+    plugin.verifyCommand?.toLowerCase().includes('css_plugins')
+  ) {
+    return (
+      `${plugin.id} ${plugin.version} could not be verified: \`${plugin.verifyCommand}\` returned no output. ` +
+      `CounterStrikeSharp is probably not loaded yet (or crashed on boot). ` +
+      `Install/reinstall Metamod + CounterStrikeSharp together, wait until the server is up, then retry.`
     );
   }
   return (

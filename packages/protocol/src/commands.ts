@@ -109,7 +109,13 @@ export const zCommand = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('plugin.install'),
     instanceId: zId,
-    plugin: zPluginSpec,
+    /**
+     * Batch install: agent downloads/extracts every plugin, restarts once,
+     * then verifies. Prefer this over repeated single-plugin installs.
+     */
+    plugins: z.array(zPluginSpec).min(1).optional(),
+    /** @deprecated Prefer `plugins`. Kept so older hubs/agents still parse. */
+    plugin: zPluginSpec.optional(),
   }),
   z.object({
     type: z.literal('plugin.remove'),
