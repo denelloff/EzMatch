@@ -1,3 +1,4 @@
+import './proxy-setup.js';
 import { executeCommand } from './commands.js';
 import { loadConfig } from './config.js';
 import { dockerFacts, ensureNetwork } from './docker/client.js';
@@ -8,7 +9,7 @@ import { log } from './logger.js';
 import { LogServer } from './logs/server.js';
 import { collectNetworkRates } from './network.js';
 
-const AGENT_VERSION = '0.1.9';
+const AGENT_VERSION = '0.1.10';
 
 async function main(): Promise<void> {
   const config = loadConfig(AGENT_VERSION);

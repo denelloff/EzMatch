@@ -34,7 +34,9 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
     install: [
       {
         kind: 'download-extract',
-        url: `https://mms.alliedmods.net/mmsdrop/2.0/mmsource-${METAMOD_BUILD}-linux.tar.gz`,
+        // Mirrored on GitHub: mms.alliedmods.net is often throttled/DPI-cut
+        // mid-download on RU/EU game hosts (Node fetch → TypeError: terminated).
+        url: `https://github.com/denelloff/EzMatch/releases/download/metamod-${METAMOD_BUILD}/mmsource-${METAMOD_BUILD}-linux.tar.gz`,
         archive: 'tar.gz',
         sha256:
           'abffda9e94aaed8271eb4ef154f85eb73c8054bc3df0ec38eafb4954f33c7674',
