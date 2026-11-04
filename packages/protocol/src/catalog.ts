@@ -18,8 +18,8 @@ import type { PluginId, PluginSpec } from './plugins.js';
 
 const GAME_DIR = 'game/csgo';
 
-export const METAMOD_BUILD = '2.0.0-git1410';
-export const COUNTERSTRIKESHARP_VERSION = '1.0.371';
+export const METAMOD_BUILD = '2.0.0-git1483';
+export const COUNTERSTRIKESHARP_VERSION = '1.0.379';
 export const FAKE_RCON_VERSION = '1.3.0';
 export const EZ_CSAY_VERSION = '0.1.1';
 /** SHA-256 of plugins/ez-csay/dist/EzCSay.zip */
@@ -37,7 +37,7 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
         url: `https://mms.alliedmods.net/mmsdrop/2.0/mmsource-${METAMOD_BUILD}-linux.tar.gz`,
         archive: 'tar.gz',
         sha256:
-          'abffda9e94aaed8271eb4ef154f85eb73c8054bc3df0ec38eafb4954f33c7674',
+          '0fdcccaa369937ed7f521c78462314b5266f39c1d65a84e4c2d3847324cd7776',
         dest: GAME_DIR,
         stripComponents: 0,
       },
@@ -73,7 +73,7 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
         url: `https://github.com/roflmuffin/CounterStrikeSharp/releases/download/v${COUNTERSTRIKESHARP_VERSION}/counterstrikesharp-with-runtime-linux-${COUNTERSTRIKESHARP_VERSION}.zip`,
         archive: 'zip',
         sha256:
-          '447f699d574348c9ffafc3d54a88363f29cd7ecba3d8e52adcccd9201812d01d',
+          'bd7e52265346a66a3106934c1f1085b642ec5560b7f070a9b10be510341d583a',
         dest: GAME_DIR,
         stripComponents: 0,
       },
