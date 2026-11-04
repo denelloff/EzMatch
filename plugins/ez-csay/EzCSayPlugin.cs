@@ -3,6 +3,7 @@ using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Commands;
+using CounterStrikeSharp.API.Modules.UserMessages;
 using Microsoft.Extensions.Logging;
 
 namespace EzCSay;
@@ -11,6 +12,8 @@ namespace EzCSay;
 /// Branded / colored server chat for eZ-Match.
 /// Console <c>say</c> is rewritten as <c>[EZ-MATCH] …</c> with optional {color} tags.
 /// Explicit <c>ezsay</c> / <c>csay</c> do the same.
+/// Also suppresses the stock CS2 "Restoring match backup …" line so only our
+/// branded announce (with operator name) is shown.
 /// </summary>
 public class EzCSayPlugin : BasePlugin
 {
@@ -21,7 +24,10 @@ public class EzCSayPlugin : BasePlugin
         "Colored [EZ-MATCH] chat announcements from the server console.";
 
     private const string Brand = "[EZ-MATCH]";
-
+    /// <summary>Protobuf id for <c>CUserMessageSayText2</c>.</summary>
+    private const int SayText2Id = 118;
+    /// <summary>Protobuf id for <c>CUserMessageSayText</c>.</summary>
+    private const int SayTextId = 117;
     private static readonly Dictionary<string, int> ColorMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["{default}"] = 1,
@@ -47,7 +53,72 @@ public class EzCSayPlugin : BasePlugin
     public override void Load(bool hotReload)
     {
         AddCommandListener("say", OnConsoleSay);
+        // Engine backup-restore announce bypasses console `say` — filter it here.
+        HookUserMessage(SayText2Id, OnChatUserMessage, HookMode.Pre);
+        HookUserMessage(SayTextId, OnChatUserMessage, HookMode.Pre);
         Logger.LogInformation("{Name} v{Version} loaded", ModuleName, ModuleVersion);
+    }
+
+    private HookResult OnChatUserMessage(UserMessage message)
+    {
+        try
+        {
+            // SayText2: param1 = author, param2 = body. SayText: often param1 = body.
+            var candidates = new[]
+            {
+                SafeReadString(message, "param2"),
+                SafeReadString(message, "param1"),
+                SafeReadString(message, "param0"),
+            };
+
+            foreach (var raw in candidates)
+            {
+                if (string.IsNullOrEmpty(raw)) continue;
+                if (IsNativeBackupRestoreAnnounce(raw))
+                {
+                    return HookResult.Stop;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "chat usermessage filter failed");
+        }
+
+        return HookResult.Continue;
+    }
+
+    private static string SafeReadString(UserMessage message, string field)
+    {
+        try
+        {
+            return message.ReadString(field) ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Stock CS2 line has no [EZ-MATCH] prefix. Our hub announce is branded and kept.
+    /// </summary>
+    internal static bool IsNativeBackupRestoreAnnounce(string message)
+    {
+        var plain = StripChatCodes(message).TrimStart();
+        if (plain.Contains(Brand, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return plain.StartsWith("Restoring match backup", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string StripChatCodes(string value)
+    {
+        // Drop CS2 color codes (0x01–0x10) and the leading ZWSP PrintToChat quirk.
+        var chars = value.Where(ch => ch is not '\u200B' && (ch < '\u0001' || ch > '\u0010'));
+        return string.Concat(chars);
     }
 
     private HookResult OnConsoleSay(CCSPlayerController? player, CommandInfo info)
