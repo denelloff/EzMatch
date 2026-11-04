@@ -3,10 +3,11 @@ import { dirname, posix } from 'node:path';
 import type Docker from 'dockerode';
 import type { InstallStep, PluginSpec } from '@ppanel/protocol';
 import { docker, pullImage } from '../docker/client.js';
-import { putFiles, readTextFile, unpackArchive } from '../docker/archive.js';
+import { putFiles, readFile, readTextFile, unpackArchive } from '../docker/archive.js';
 import { CS2_ROOT, resolveInstallPath } from '../docker/paths.js';
 import { log } from '../logger.js';
 import { CommandCancelledError, throwIfAborted } from '../cancel.js';
+import { clearElfExecstack } from './elf-execstack.js';
 
 /** Releases are tens of megabytes at most; anything larger is not a plugin. */
 const MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024;
@@ -272,6 +273,7 @@ const STEAM_UID_GID = '1000:1000';
 
 const ADDONS_DIR = `${CS2_ROOT}/game/csgo/addons`;
 const CSS_CONFIGS_DIR = `${ADDONS_DIR}/counterstrikesharp/configs`;
+const CSS_SO_PATH = `${ADDONS_DIR}/counterstrikesharp/bin/linuxsteamrt64/counterstrikesharp.so`;
 const GAMEINFO_PATH = `${CS2_ROOT}/game/csgo/gameinfo.gi`;
 
 /**
@@ -280,6 +282,7 @@ const GAMEINFO_PATH = `${CS2_ROOT}/game/csgo/gameinfo.gi`;
  */
 export async function fixAddonPermissions(containerName: string): Promise<void> {
   const container = docker.getContainer(containerName);
+  await clearCounterStrikeSharpExecstack(containerName);
   await execInContainer(container, [
     'sh',
     '-c',
@@ -294,6 +297,27 @@ export async function fixAddonPermissions(containerName: string): Promise<void> 
       `if [ -f "${GAMEINFO_PATH}" ]; then chown ${STEAM_UID_GID} "${GAMEINFO_PATH}"; fi`,
     ].join('\n'),
   ]);
+}
+
+/**
+ * Newer hosts reject CSS .so with "cannot enable executable stack". Clear the
+ * PT_GNU_STACK execute bit so Metamod can load CounterStrikeSharp.
+ */
+export async function clearCounterStrikeSharpExecstack(
+  containerName: string,
+): Promise<boolean> {
+  const container = docker.getContainer(containerName);
+  const raw = await readFile(container, CSS_SO_PATH);
+  if (!raw) return false;
+  const patched = clearElfExecstack(raw);
+  if (!patched) return false;
+  await putFiles(container, posix.dirname(CSS_SO_PATH), [
+    { name: posix.basename(CSS_SO_PATH), content: patched, mode: 0o755 },
+  ]);
+  log.info('cleared CounterStrikeSharp executable stack flag', {
+    containerName,
+  });
+  return true;
 }
 
 /**

@@ -68,6 +68,38 @@ export interface ManagedInstance {
 /** After start: stream boot log this long, then detach until match. */
 const BOOT_CONSOLE_MS = 120_000;
 
+/** CS2 needs AF_UNIX socketpair + larger /dev/shm; default Docker seccomp/AppArmor break SteamDatagram. */
+const CS2_SECURITY_OPT = ['apparmor=unconfined', 'seccomp=unconfined'] as const;
+const CS2_SHM_SIZE = 1_073_741_824; // 1 GiB
+
+function withCs2HostConfig(
+  base: Docker.ContainerCreateOptions['HostConfig'] | null | undefined,
+): Docker.ContainerCreateOptions['HostConfig'] {
+  const security = new Set<string>([
+    ...((base?.SecurityOpt as string[] | null | undefined) ?? []),
+    ...CS2_SECURITY_OPT,
+  ]);
+  return {
+    ...(base ?? {}),
+    SecurityOpt: [...security],
+    ShmSize: Math.max(base?.ShmSize ?? 0, CS2_SHM_SIZE),
+  };
+}
+
+function needsCs2HostConfigRepair(
+  details: Docker.ContainerInspectInfo,
+): boolean {
+  const opts: string[] = details.HostConfig?.SecurityOpt ?? [];
+  const hasApparmor = opts.some((opt: string) =>
+    opt.includes('apparmor=unconfined'),
+  );
+  const hasSeccomp = opts.some((opt: string) =>
+    opt.includes('seccomp=unconfined'),
+  );
+  const shm = details.HostConfig?.ShmSize ?? 0;
+  return !hasApparmor || !hasSeccomp || shm < CS2_SHM_SIZE;
+}
+
 export type InstanceChangeListener = (snapshot: InstanceSnapshot) => void;
 export type ConsoleLineListener = (
   instanceId: string,
@@ -357,7 +389,7 @@ export class InstanceManager {
         [`${INTERNAL_GAME_PORT}/udp`]: {},
         [`${INTERNAL_TV_PORT}/udp`]: {},
       },
-      HostConfig: {
+      HostConfig: withCs2HostConfig({
         Binds: [`${volumeName}:${CS2_ROOT}`],
         NetworkMode: this.config.network,
         PortBindings: {
@@ -373,7 +405,7 @@ export class InstanceManager {
         // unsupervised Docker restart would silently upgrade CS2 and can break
         // Metamod and CounterStrikeSharp mid-match. The agent restarts instead.
         RestartPolicy: { Name: 'no' },
-      },
+      }),
     });
 
     this.setState(instance, 'installing');
@@ -507,6 +539,7 @@ export class InstanceManager {
     const instance = this.get(instanceId);
     instance.desiredRunning = true;
     this.setState(instance, 'starting');
+    await this.repairCs2HostConfigIfNeeded(instance);
     try {
       await docker.getContainer(instance.containerName).start();
     } catch (error) {
@@ -518,6 +551,49 @@ export class InstanceManager {
     await this.refreshBuildId(instance);
     await this.beginBootConsole(instance);
     this.setState(instance, 'running');
+  }
+
+  /**
+   * Older CS2 containers lack seccomp/apparmor unconfined → SteamDatagram
+   * socketpair EACCES crash loop. Recreate with fixed HostConfig in place.
+   */
+  private async repairCs2HostConfigIfNeeded(
+    instance: ManagedInstance,
+  ): Promise<void> {
+    const container = docker.getContainer(instance.containerName);
+    let details: Docker.ContainerInspectInfo;
+    try {
+      details = await container.inspect();
+    } catch (error) {
+      if (isNotFound(error)) return;
+      throw error;
+    }
+    if (!needsCs2HostConfigRepair(details)) return;
+
+    log.warn('recreating CS2 container with SteamDatagram-safe HostConfig', {
+      instanceId: instance.instanceId,
+    });
+    const wasRunning = Boolean(details.State.Running);
+    if (wasRunning) {
+      instance.console.stop();
+      try {
+        await container.stop({ t: 15 });
+      } catch (error) {
+        if (!isAlreadyInState(error) && !isNotFound(error)) throw error;
+      }
+    }
+    await container.remove({ force: true });
+    await docker.createContainer({
+      name: instance.containerName,
+      Image: details.Config.Image,
+      Tty: true,
+      OpenStdin: true,
+      StdinOnce: false,
+      Env: details.Config.Env,
+      Labels: details.Config.Labels,
+      ExposedPorts: details.Config.ExposedPorts,
+      HostConfig: withCs2HostConfig(details.HostConfig),
+    });
   }
 
   async stop(instanceId: string, timeoutSec: number): Promise<void> {
@@ -964,7 +1040,7 @@ async function recreateWithEnv(
     Env: env,
     Labels: details.Config.Labels,
     ExposedPorts: details.Config.ExposedPorts,
-    HostConfig: details.HostConfig,
+    HostConfig: withCs2HostConfig(details.HostConfig),
   });
 }
 
@@ -988,7 +1064,7 @@ async function recreateWithConfig(
     Env: env,
     Labels: details.Config.Labels,
     ExposedPorts: details.Config.ExposedPorts,
-    HostConfig: details.HostConfig,
+    HostConfig: withCs2HostConfig(details.HostConfig),
   });
 }
 
