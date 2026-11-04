@@ -34,12 +34,7 @@ export const PLUGIN_CATALOG: Record<PluginId, PluginSpec> = {
     install: [
       {
         kind: 'download-extract',
-        // Official AlliedModders first; GitHub mirror if DPI/throttle cuts the
-        // transfer (same bytes / sha256 as mmsdrop).
         url: `https://mms.alliedmods.net/mmsdrop/2.0/mmsource-${METAMOD_BUILD}-linux.tar.gz`,
-        mirrors: [
-          `https://github.com/denelloff/EzMatch/releases/download/metamod-${METAMOD_BUILD}/mmsource-${METAMOD_BUILD}-linux.tar.gz`,
-        ],
         archive: 'tar.gz',
         sha256:
           'abffda9e94aaed8271eb4ef154f85eb73c8054bc3df0ec38eafb4954f33c7674',
