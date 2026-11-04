@@ -61,28 +61,28 @@ export async function scheduleAgentUpdate(input: {
     throw new Error(`Refusing unsafe container name: ${containerName}`);
   }
 
-  progress('pulling', `Pulling ${image}`, 10);
+  progress('pulling-image', `Pulling ${image}`, 10);
   await pullImage(image, (event) => {
     if (event.status) {
       progress(
-        'pulling',
+        'pulling-image',
         event.progress ? `${event.status} ${event.progress}` : event.status,
         null,
       );
     }
   });
 
-  progress('preparing', 'Preparing the replacement container', 55);
+  progress('updating', 'Preparing the replacement container', 55);
   const current = await docker.getContainer(containerName).inspect();
   const tempName = `${containerName}-next`;
 
   await removeIfExists(tempName);
   await createReplacement(tempName, image, current);
 
-  progress('scheduling', 'Scheduling container swap', 75);
+  progress('updating', 'Scheduling container swap', 75);
   await scheduleSwapViaHelper(containerName, tempName, image);
 
-  progress('restarting', 'Restarting with the new image', 90);
+  progress('updating', 'Restarting with the new image', 90);
   log.info('agent update scheduled', { containerName, image, tempName });
   return { image, containerName };
 }
